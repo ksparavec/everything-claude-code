@@ -1,10 +1,18 @@
+**Language:** English | [繁體中文](docs/zh-TW/README.md)
+
 # Everything Claude Code
 
 [![Stars](https://img.shields.io/github/stars/affaan-m/everything-claude-code?style=flat)](https://github.com/affaan-m/everything-claude-code/stargazers)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Shell](https://img.shields.io/badge/-Shell-4EAA25?logo=gnu-bash&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?logo=typescript&logoColor=white)
+![Go](https://img.shields.io/badge/-Go-00ADD8?logo=go&logoColor=white)
 ![Markdown](https://img.shields.io/badge/-Markdown-000000?logo=markdown&logoColor=white)
+
+<p align="left">
+  <span>English</span> |
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
 
 **The complete collection of Claude Code configs from an Anthropic hackathon winner.**
 
@@ -101,6 +109,8 @@ everything-claude-code/
 |   |-- e2e-runner.md        # Playwright E2E testing
 |   |-- refactor-cleaner.md  # Dead code cleanup
 |   |-- doc-updater.md       # Documentation sync
+|   |-- go-reviewer.md       # Go code review (NEW)
+|   |-- go-build-resolver.md # Go build error resolution (NEW)
 |
 |-- skills/           # Workflow definitions and domain knowledge
 |   |-- coding-standards/           # Language best practices
@@ -114,6 +124,8 @@ everything-claude-code/
 |   |-- security-review/            # Security checklist
 |   |-- eval-harness/               # Verification loop evaluation (Longform Guide)
 |   |-- verification-loop/          # Continuous verification (Longform Guide)
+|   |-- golang-patterns/            # Go idioms and best practices (NEW)
+|   |-- golang-testing/             # Go testing patterns, TDD, benchmarks (NEW)
 |
 |-- commands/         # Slash commands for quick execution
 |   |-- tdd.md              # /tdd - Test-driven development
@@ -125,7 +137,15 @@ everything-claude-code/
 |   |-- learn.md            # /learn - Extract patterns mid-session (Longform Guide)
 |   |-- checkpoint.md       # /checkpoint - Save verification state (Longform Guide)
 |   |-- verify.md           # /verify - Run verification loop (Longform Guide)
-|   |-- setup-pm.md         # /setup-pm - Configure package manager (NEW)
+|   |-- setup-pm.md         # /setup-pm - Configure package manager
+|   |-- go-review.md        # /go-review - Go code review (NEW)
+|   |-- go-test.md          # /go-test - Go TDD workflow (NEW)
+|   |-- go-build.md         # /go-build - Fix Go build errors (NEW)
+|   |-- skill-create.md     # /skill-create - Generate skills from git history (NEW)
+|   |-- instinct-status.md  # /instinct-status - View learned instincts (NEW)
+|   |-- instinct-import.md  # /instinct-import - Import instincts (NEW)
+|   |-- instinct-export.md  # /instinct-export - Export instincts (NEW)
+|   |-- evolve.md           # /evolve - Cluster instincts into skills (NEW)
 |
 |-- rules/            # Always-follow guidelines (copy to ~/.claude/rules/)
 |   |-- security.md         # Mandatory security checks
@@ -176,23 +196,78 @@ everything-claude-code/
 
 ## Ecosystem Tools
 
-### ecc.tools - Skill Creator
+### Skill Creator
 
-Automatically generate Claude Code skills from your repository.
+Two ways to generate Claude Code skills from your repository:
+
+#### Option A: Local Analysis (Built-in)
+
+Use the `/skill-create` command for local analysis without external services:
+
+```bash
+/skill-create                    # Analyze current repo
+/skill-create --instincts        # Also generate instincts for continuous-learning
+```
+
+This analyzes your git history locally and generates SKILL.md files.
+
+#### Option B: GitHub App (Advanced)
+
+For advanced features (10k+ commits, auto-PRs, team sharing):
 
 [Install GitHub App](https://github.com/apps/skill-creator) | [ecc.tools](https://ecc.tools)
 
-Analyzes your repository and creates:
+```bash
+# Comment on any issue:
+/skill-creator analyze
+
+# Or auto-triggers on push to default branch
+```
+
+Both options create:
 - **SKILL.md files** - Ready-to-use skills for Claude Code
 - **Instinct collections** - For continuous-learning-v2
 - **Pattern extraction** - Learns from your commit history
 
+### Continuous Learning v2
+
+The instinct-based learning system automatically learns your patterns:
+
 ```bash
-# After installing the GitHub App, skills appear in:
-~/.claude/skills/generated/
+/instinct-status        # Show learned instincts with confidence
+/instinct-import <file> # Import instincts from others
+/instinct-export        # Export your instincts for sharing
+/evolve                 # Cluster related instincts into skills
 ```
 
-Works seamlessly with the `continuous-learning-v2` skill for inherited instincts.
+See `skills/continuous-learning-v2/` for full documentation.
+
+---
+
+## Requirements
+
+### Claude Code CLI Version
+
+**Minimum version: v2.1.0 or later**
+
+This plugin requires Claude Code CLI v2.1.0+ due to changes in how the plugin system handles hooks.
+
+Check your version:
+```bash
+claude --version
+```
+
+### Important: Hooks Auto-Loading Behavior
+
+> ⚠️ **For Contributors:** Do NOT add a `"hooks"` field to `.claude-plugin/plugin.json`. This is enforced by a regression test.
+
+Claude Code v2.1+ **automatically loads** `hooks/hooks.json` from any installed plugin by convention. Explicitly declaring it in `plugin.json` causes a duplicate detection error:
+
+```
+Duplicate hooks file detected: ./hooks/hooks.json resolves to already-loaded file
+```
+
+**History:** This has caused repeated fix/revert cycles in this repo ([#29](https://github.com/affaan-m/everything-claude-code/issues/29), [#52](https://github.com/affaan-m/everything-claude-code/issues/52), [#103](https://github.com/affaan-m/everything-claude-code/issues/103)). The behavior changed between Claude Code versions, leading to confusion. We now have a regression test to prevent this from being reintroduced.
 
 ---
 
@@ -229,6 +304,20 @@ Or add directly to your `~/.claude/settings.json`:
 ```
 
 This gives you instant access to all commands, agents, skills, and hooks.
+
+> **Note:** The Claude Code plugin system does not support distributing `rules` via plugins ([upstream limitation](https://code.claude.com/docs/en/plugins-reference)). You need to install rules manually:
+>
+> ```bash
+> # Clone the repo first
+> git clone https://github.com/affaan-m/everything-claude-code.git
+>
+> # Option A: User-level rules (applies to all projects)
+> cp -r everything-claude-code/rules/* ~/.claude/rules/
+>
+> # Option B: Project-level rules (applies to current project only)
+> mkdir -p .claude/rules
+> cp -r everything-claude-code/rules/* .claude/rules/
+> ```
 
 ---
 
@@ -353,7 +442,7 @@ Please contribute! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Ideas for Contributions
 
-- Language-specific skills (Python, Go, Rust patterns)
+- Language-specific skills (Python, Rust patterns) - Go now included!
 - Framework-specific configs (Django, Rails, Laravel)
 - DevOps agents (Kubernetes, Terraform, AWS)
 - Testing strategies (different frameworks)
