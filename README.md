@@ -3,16 +3,29 @@
 # Everything Claude Code
 
 [![Stars](https://img.shields.io/github/stars/affaan-m/everything-claude-code?style=flat)](https://github.com/affaan-m/everything-claude-code/stargazers)
+[![Forks](https://img.shields.io/github/forks/affaan-m/everything-claude-code?style=flat)](https://github.com/affaan-m/everything-claude-code/network/members)
+[![Contributors](https://img.shields.io/github/contributors/affaan-m/everything-claude-code?style=flat)](https://github.com/affaan-m/everything-claude-code/graphs/contributors)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Shell](https://img.shields.io/badge/-Shell-4EAA25?logo=gnu-bash&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?logo=typescript&logoColor=white)
+![Python](https://img.shields.io/badge/-Python-3776AB?logo=python&logoColor=white)
 ![Go](https://img.shields.io/badge/-Go-00ADD8?logo=go&logoColor=white)
+![Java](https://img.shields.io/badge/-Java-ED8B00?logo=openjdk&logoColor=white)
 ![Markdown](https://img.shields.io/badge/-Markdown-000000?logo=markdown&logoColor=white)
 
-<p align="left">
-  <span>English</span> |
-  <a href="README.zh-CN.md">简体中文</a>
-</p>
+> **41K+ stars** | **5K+ forks** | **22 contributors** | **6 languages supported**
+
+---
+
+<div align="center">
+
+**🌐 Language / 语言 / 語言**
+
+[**English**](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](docs/zh-TW/README.md)
+
+</div>
+
+---
 
 **The complete collection of Claude Code configs from an Anthropic hackathon winner.**
 
@@ -54,7 +67,84 @@ This repo is the raw code only. The guides explain everything.
 
 ---
 
-## Cross-Platform Support
+## What's New
+
+### v1.4.1 — Bug Fix (Feb 2026)
+
+- **Fixed instinct import content loss** — `parse_instinct_file()` was silently dropping all content after frontmatter (Action, Evidence, Examples sections) during `/instinct-import`. Fixed by community contributor @ericcai0814 ([#148](https://github.com/affaan-m/everything-claude-code/issues/148), [#161](https://github.com/affaan-m/everything-claude-code/pull/161))
+
+### v1.4.0 — Multi-Language Rules, Installation Wizard & PM2 (Feb 2026)
+
+- **Interactive installation wizard** — New `configure-ecc` skill provides guided setup with merge/overwrite detection
+- **PM2 & multi-agent orchestration** — 6 new commands (`/pm2`, `/multi-plan`, `/multi-execute`, `/multi-backend`, `/multi-frontend`, `/multi-workflow`) for managing complex multi-service workflows
+- **Multi-language rules architecture** — Rules restructured from flat files into `common/` + `typescript/` + `python/` + `golang/` directories. Install only the languages you need
+- **Chinese (zh-CN) translations** — Complete translation of all agents, commands, skills, and rules (80+ files)
+- **GitHub Sponsors support** — Sponsor the project via GitHub Sponsors
+- **Enhanced CONTRIBUTING.md** — Detailed PR templates for each contribution type
+
+### v1.3.0 — OpenCode Plugin Support (Feb 2026)
+
+- **Full OpenCode integration** — 12 agents, 24 commands, 16 skills with hook support via OpenCode's plugin system (20+ event types)
+- **3 native custom tools** — run-tests, check-coverage, security-audit
+- **LLM documentation** — `llms.txt` for comprehensive OpenCode docs
+
+### v1.2.0 — Unified Commands & Skills (Feb 2026)
+
+- **Python/Django support** — Django patterns, security, TDD, and verification skills
+- **Java Spring Boot skills** — Patterns, security, TDD, and verification for Spring Boot
+- **Session management** — `/sessions` command for session history
+- **Continuous learning v2** — Instinct-based learning with confidence scoring, import/export, evolution
+
+See the full changelog in [Releases](https://github.com/affaan-m/everything-claude-code/releases).
+
+---
+
+## 🚀 Quick Start
+
+Get up and running in under 2 minutes:
+
+### Step 1: Install the Plugin
+
+```bash
+# Add marketplace
+/plugin marketplace add affaan-m/everything-claude-code
+
+# Install plugin
+/plugin install everything-claude-code@everything-claude-code
+```
+
+### Step 2: Install Rules (Required)
+
+> ⚠️ **Important:** Claude Code plugins cannot distribute `rules` automatically. Install them manually:
+
+```bash
+# Clone the repo first
+git clone https://github.com/affaan-m/everything-claude-code.git
+
+# Install common rules (required)
+cp -r everything-claude-code/rules/common/* ~/.claude/rules/
+
+# Install language-specific rules (pick your stack)
+cp -r everything-claude-code/rules/typescript/* ~/.claude/rules/
+cp -r everything-claude-code/rules/python/* ~/.claude/rules/
+cp -r everything-claude-code/rules/golang/* ~/.claude/rules/
+```
+
+### Step 3: Start Using
+
+```bash
+# Try a command
+/plan "Add user authentication"
+
+# Check available commands
+/plugin list everything-claude-code@everything-claude-code
+```
+
+✨ **That's it!** You now have access to 15+ agents, 30+ skills, and 30+ commands.
+
+---
+
+## 🌐 Cross-Platform Support
 
 This plugin now fully supports **Windows, macOS, and Linux**. All hooks and scripts have been rewritten in Node.js for maximum compatibility.
 
@@ -89,7 +179,7 @@ Or use the `/setup-pm` command in Claude Code.
 
 ---
 
-## What's Inside
+## 📦 What's Inside
 
 This repo is a **Claude Code plugin** - install it directly or copy components manually.
 
@@ -109,8 +199,10 @@ everything-claude-code/
 |   |-- e2e-runner.md        # Playwright E2E testing
 |   |-- refactor-cleaner.md  # Dead code cleanup
 |   |-- doc-updater.md       # Documentation sync
-|   |-- go-reviewer.md       # Go code review (NEW)
-|   |-- go-build-resolver.md # Go build error resolution (NEW)
+|   |-- go-reviewer.md       # Go code review
+|   |-- go-build-resolver.md # Go build error resolution
+|   |-- python-reviewer.md   # Python code review (NEW)
+|   |-- database-reviewer.md # Database/Supabase review (NEW)
 |
 |-- skills/           # Workflow definitions and domain knowledge
 |   |-- coding-standards/           # Language best practices
@@ -124,8 +216,19 @@ everything-claude-code/
 |   |-- security-review/            # Security checklist
 |   |-- eval-harness/               # Verification loop evaluation (Longform Guide)
 |   |-- verification-loop/          # Continuous verification (Longform Guide)
-|   |-- golang-patterns/            # Go idioms and best practices (NEW)
-|   |-- golang-testing/             # Go testing patterns, TDD, benchmarks (NEW)
+|   |-- golang-patterns/            # Go idioms and best practices
+|   |-- golang-testing/             # Go testing patterns, TDD, benchmarks
+|   |-- django-patterns/            # Django patterns, models, views (NEW)
+|   |-- django-security/            # Django security best practices (NEW)
+|   |-- django-tdd/                 # Django TDD workflow (NEW)
+|   |-- django-verification/        # Django verification loops (NEW)
+|   |-- python-patterns/            # Python idioms and best practices (NEW)
+|   |-- python-testing/             # Python testing with pytest (NEW)
+|   |-- springboot-patterns/        # Java Spring Boot patterns (NEW)
+|   |-- springboot-security/        # Spring Boot security (NEW)
+|   |-- springboot-tdd/             # Spring Boot TDD (NEW)
+|   |-- springboot-verification/    # Spring Boot verification (NEW)
+|   |-- configure-ecc/              # Interactive installation wizard (NEW)
 |
 |-- commands/         # Slash commands for quick execution
 |   |-- tdd.md              # /tdd - Test-driven development
@@ -145,15 +248,28 @@ everything-claude-code/
 |   |-- instinct-status.md  # /instinct-status - View learned instincts (NEW)
 |   |-- instinct-import.md  # /instinct-import - Import instincts (NEW)
 |   |-- instinct-export.md  # /instinct-export - Export instincts (NEW)
-|   |-- evolve.md           # /evolve - Cluster instincts into skills (NEW)
+|   |-- evolve.md           # /evolve - Cluster instincts into skills
+|   |-- pm2.md              # /pm2 - PM2 service lifecycle management (NEW)
+|   |-- multi-plan.md       # /multi-plan - Multi-agent task decomposition (NEW)
+|   |-- multi-execute.md    # /multi-execute - Orchestrated multi-agent workflows (NEW)
+|   |-- multi-backend.md    # /multi-backend - Backend multi-service orchestration (NEW)
+|   |-- multi-frontend.md   # /multi-frontend - Frontend multi-service orchestration (NEW)
+|   |-- multi-workflow.md   # /multi-workflow - General multi-service workflows (NEW)
 |
 |-- rules/            # Always-follow guidelines (copy to ~/.claude/rules/)
-|   |-- security.md         # Mandatory security checks
-|   |-- coding-style.md     # Immutability, file organization
-|   |-- testing.md          # TDD, 80% coverage requirement
-|   |-- git-workflow.md     # Commit format, PR process
-|   |-- agents.md           # When to delegate to subagents
-|   |-- performance.md      # Model selection, context management
+|   |-- README.md            # Structure overview and installation guide
+|   |-- common/              # Language-agnostic principles
+|   |   |-- coding-style.md    # Immutability, file organization
+|   |   |-- git-workflow.md    # Commit format, PR process
+|   |   |-- testing.md         # TDD, 80% coverage requirement
+|   |   |-- performance.md     # Model selection, context management
+|   |   |-- patterns.md        # Design patterns, skeleton projects
+|   |   |-- hooks.md           # Hook architecture, TodoWrite
+|   |   |-- agents.md          # When to delegate to subagents
+|   |   |-- security.md        # Mandatory security checks
+|   |-- typescript/          # TypeScript/JavaScript specific
+|   |-- python/              # Python specific
+|   |-- golang/              # Go specific
 |
 |-- hooks/            # Trigger-based automations
 |   |-- hooks.json                # All hooks config (PreToolUse, PostToolUse, Stop, etc.)
@@ -194,7 +310,7 @@ everything-claude-code/
 
 ---
 
-## Ecosystem Tools
+## 🛠️ Ecosystem Tools
 
 ### Skill Creator
 
@@ -229,7 +345,7 @@ Both options create:
 - **Instinct collections** - For continuous-learning-v2
 - **Pattern extraction** - Learns from your commit history
 
-### Continuous Learning v2
+### 🧠 Continuous Learning v2
 
 The instinct-based learning system automatically learns your patterns:
 
@@ -244,7 +360,7 @@ See `skills/continuous-learning-v2/` for full documentation.
 
 ---
 
-## Requirements
+## 📋 Requirements
 
 ### Claude Code CLI Version
 
@@ -271,7 +387,7 @@ Duplicate hooks file detected: ./hooks/hooks.json resolves to already-loaded fil
 
 ---
 
-## Installation
+## 📥 Installation
 
 ### Option 1: Install as Plugin (Recommended)
 
@@ -312,16 +428,20 @@ This gives you instant access to all commands, agents, skills, and hooks.
 > git clone https://github.com/affaan-m/everything-claude-code.git
 >
 > # Option A: User-level rules (applies to all projects)
-> cp -r everything-claude-code/rules/* ~/.claude/rules/
+> cp -r everything-claude-code/rules/common/* ~/.claude/rules/
+> cp -r everything-claude-code/rules/typescript/* ~/.claude/rules/   # pick your stack
+> cp -r everything-claude-code/rules/python/* ~/.claude/rules/
+> cp -r everything-claude-code/rules/golang/* ~/.claude/rules/
 >
 > # Option B: Project-level rules (applies to current project only)
 > mkdir -p .claude/rules
-> cp -r everything-claude-code/rules/* .claude/rules/
+> cp -r everything-claude-code/rules/common/* .claude/rules/
+> cp -r everything-claude-code/rules/typescript/* .claude/rules/     # pick your stack
 > ```
 
 ---
 
-### Option 2: Manual Installation
+### 🔧 Option 2: Manual Installation
 
 If you prefer manual control over what's installed:
 
@@ -332,8 +452,11 @@ git clone https://github.com/affaan-m/everything-claude-code.git
 # Copy agents to your Claude config
 cp everything-claude-code/agents/*.md ~/.claude/agents/
 
-# Copy rules
-cp everything-claude-code/rules/*.md ~/.claude/rules/
+# Copy rules (common + language-specific)
+cp -r everything-claude-code/rules/common/* ~/.claude/rules/
+cp -r everything-claude-code/rules/typescript/* ~/.claude/rules/   # pick your stack
+cp -r everything-claude-code/rules/python/* ~/.claude/rules/
+cp -r everything-claude-code/rules/golang/* ~/.claude/rules/
 
 # Copy commands
 cp everything-claude-code/commands/*.md ~/.claude/commands/
@@ -354,7 +477,7 @@ Copy desired MCP servers from `mcp-configs/mcp-servers.json` to your `~/.claude.
 
 ---
 
-## Key Concepts
+## 🎯 Key Concepts
 
 ### Agents
 
@@ -401,18 +524,21 @@ Hooks fire on tool events. Example - warn about console.log:
 
 ### Rules
 
-Rules are always-follow guidelines. Keep them modular:
+Rules are always-follow guidelines, organized into `common/` (language-agnostic) + language-specific directories:
 
 ```
-~/.claude/rules/
-  security.md      # No hardcoded secrets
-  coding-style.md  # Immutability, file limits
-  testing.md       # TDD, coverage requirements
+rules/
+  common/          # Universal principles (always install)
+  typescript/      # TS/JS specific patterns and tools
+  python/          # Python specific patterns and tools
+  golang/          # Go specific patterns and tools
 ```
+
+See [`rules/README.md`](rules/README.md) for installation and structure details.
 
 ---
 
-## Running Tests
+## 🧪 Running Tests
 
 The plugin includes a comprehensive test suite:
 
@@ -428,7 +554,7 @@ node tests/hooks/hooks.test.js
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 **Contributions are welcome and encouraged.**
 
@@ -442,15 +568,115 @@ Please contribute! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Ideas for Contributions
 
-- Language-specific skills (Python, Rust patterns) - Go now included!
-- Framework-specific configs (Django, Rails, Laravel)
-- DevOps agents (Kubernetes, Terraform, AWS)
-- Testing strategies (different frameworks)
+- Language-specific skills (Rust, C#, Swift, Kotlin) — Go, Python, Java already included
+- Framework-specific configs (Rails, Laravel, FastAPI, NestJS) — Django, Spring Boot already included
+- DevOps agents (Kubernetes, Terraform, AWS, Docker)
+- Testing strategies (different frameworks, visual regression)
 - Domain-specific knowledge (ML, data engineering, mobile)
 
 ---
 
-## Background
+## 🔌 OpenCode Support
+
+ECC provides **full OpenCode support** including plugins and hooks.
+
+### Quick Start
+
+```bash
+# Install OpenCode
+npm install -g opencode
+
+# Run in the repository root
+opencode
+```
+
+The configuration is automatically detected from `.opencode/opencode.json`.
+
+### Feature Parity
+
+| Feature | Claude Code | OpenCode | Status |
+|---------|-------------|----------|--------|
+| Agents | ✅ 14 agents | ✅ 12 agents | **Claude Code leads** |
+| Commands | ✅ 30 commands | ✅ 24 commands | **Claude Code leads** |
+| Skills | ✅ 28 skills | ✅ 16 skills | **Claude Code leads** |
+| Hooks | ✅ 3 phases | ✅ 20+ events | **OpenCode has more!** |
+| Rules | ✅ 8 rules | ✅ 8 rules | **Full parity** |
+| MCP Servers | ✅ Full | ✅ Full | **Full parity** |
+| Custom Tools | ✅ Via hooks | ✅ Native support | **OpenCode is better** |
+
+### Hook Support via Plugins
+
+OpenCode's plugin system is MORE sophisticated than Claude Code with 20+ event types:
+
+| Claude Code Hook | OpenCode Plugin Event |
+|-----------------|----------------------|
+| PreToolUse | `tool.execute.before` |
+| PostToolUse | `tool.execute.after` |
+| Stop | `session.idle` |
+| SessionStart | `session.created` |
+| SessionEnd | `session.deleted` |
+
+**Additional OpenCode events**: `file.edited`, `file.watcher.updated`, `message.updated`, `lsp.client.diagnostics`, `tui.toast.show`, and more.
+
+### Available Commands (24)
+
+| Command | Description |
+|---------|-------------|
+| `/plan` | Create implementation plan |
+| `/tdd` | Enforce TDD workflow |
+| `/code-review` | Review code changes |
+| `/security` | Run security review |
+| `/build-fix` | Fix build errors |
+| `/e2e` | Generate E2E tests |
+| `/refactor-clean` | Remove dead code |
+| `/orchestrate` | Multi-agent workflow |
+| `/learn` | Extract patterns from session |
+| `/checkpoint` | Save verification state |
+| `/verify` | Run verification loop |
+| `/eval` | Evaluate against criteria |
+| `/update-docs` | Update documentation |
+| `/update-codemaps` | Update codemaps |
+| `/test-coverage` | Analyze coverage |
+| `/go-review` | Go code review |
+| `/go-test` | Go TDD workflow |
+| `/go-build` | Fix Go build errors |
+| `/skill-create` | Generate skills from git |
+| `/instinct-status` | View learned instincts |
+| `/instinct-import` | Import instincts |
+| `/instinct-export` | Export instincts |
+| `/evolve` | Cluster instincts into skills |
+| `/setup-pm` | Configure package manager |
+
+### Plugin Installation
+
+**Option 1: Use directly**
+```bash
+cd everything-claude-code
+opencode
+```
+
+**Option 2: Install as npm package**
+```bash
+npm install opencode-ecc
+```
+
+Then add to your `opencode.json`:
+```json
+{
+  "plugin": ["opencode-ecc"]
+}
+```
+
+### Documentation
+
+- **Migration Guide**: `.opencode/MIGRATION.md`
+- **OpenCode Plugin README**: `.opencode/README.md`
+- **Consolidated Rules**: `.opencode/instructions/INSTRUCTIONS.md`
+- **LLM Documentation**: `llms.txt` (complete OpenCode docs for LLMs)
+
+---
+
+## 📖 Background
 
 I've been using Claude Code since the experimental rollout. Won the Anthropic x Forum Ventures hackathon in Sep 2025 building [zenith.chat](https://zenith.chat) with [@DRodriguezFX](https://x.com/DRodriguezFX) - entirely using Claude Code.
 
@@ -458,7 +684,7 @@ These configs are battle-tested across multiple production applications.
 
 ---
 
-## Important Notes
+## ⚠️ Important Notes
 
 ### Context Window Management
 
@@ -481,13 +707,13 @@ These configs work for my workflow. You should:
 
 ---
 
-## Star History
+## 🌟 Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=affaan-m/everything-claude-code&type=Date)](https://star-history.com/#affaan-m/everything-claude-code&Date)
 
 ---
 
-## Links
+## 🔗 Links
 
 - **Shorthand Guide (Start Here):** [The Shorthand Guide to Everything Claude Code](https://x.com/affaanmustafa/status/2012378465664745795)
 - **Longform Guide (Advanced):** [The Longform Guide to Everything Claude Code](https://x.com/affaanmustafa/status/2014040193557471352)
@@ -496,7 +722,7 @@ These configs work for my workflow. You should:
 
 ---
 
-## License
+## 📄 License
 
 MIT - Use freely, modify as needed, contribute back if you can.
 
