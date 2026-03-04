@@ -214,8 +214,8 @@ Create a detailed implementation plan for: $ARGUMENTS
 {
   "instructions": [
     ".opencode/instructions/INSTRUCTIONS.md",
-    "rules/security.md",
-    "rules/coding-style.md"
+    "rules/common/security.md",
+    "rules/common/coding-style.md"
   ]
 }
 ```
@@ -258,6 +258,8 @@ After migration, ALL 23 commands are available:
 | `/instinct-import` | Import instincts |
 | `/instinct-export` | Export instincts |
 | `/evolve` | Cluster instincts into skills |
+| `/promote` | Promote project instincts to global scope |
+| `/projects` | List known projects and instinct stats |
 
 ## Available Agents
 
@@ -285,13 +287,13 @@ The `.opencode/` directory contains everything pre-configured.
 ### Option 2: Install as npm Package
 
 ```bash
-npm install opencode-ecc
+npm install ecc-universal
 ```
 
 Then in your `opencode.json`:
 ```json
 {
-  "plugin": ["opencode-ecc"]
+  "plugin": ["ecc-universal"]
 }
 ```
 
