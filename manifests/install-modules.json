@@ -63,7 +63,8 @@
       "description": "Runtime hook configs and hook script helpers.",
       "paths": [
         "hooks",
-        "scripts/hooks"
+        "scripts/hooks",
+        "scripts/lib"
       ],
       "targets": [
         "claude",
@@ -90,6 +91,7 @@
       "targets": [
         "claude",
         "cursor",
+        "antigravity",
         "codex",
         "opencode"
       ],

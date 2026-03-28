@@ -55,15 +55,18 @@ analyze_observations() {
   # Sample recent observations instead of loading the entire file (#521).
   # This prevents multi-MB payloads from being passed to the LLM.
   MAX_ANALYSIS_LINES="${ECC_OBSERVER_MAX_ANALYSIS_LINES:-500}"
-  analysis_file="$(mktemp "${TMPDIR:-/tmp}/ecc-observer-analysis.XXXXXX.jsonl")"
+  observer_tmp_dir="${PROJECT_DIR}/.observer-tmp"
+  mkdir -p "$observer_tmp_dir"
+  analysis_file="$(mktemp "${observer_tmp_dir}/ecc-observer-analysis.XXXXXX.jsonl")"
   tail -n "$MAX_ANALYSIS_LINES" "$OBSERVATIONS_FILE" > "$analysis_file"
   analysis_count=$(wc -l < "$analysis_file" 2>/dev/null || echo 0)
   echo "[$(date)] Using last $analysis_count of $obs_count observations for analysis" >> "$LOG_FILE"
 
-  prompt_file="$(mktemp "${TMPDIR:-/tmp}/ecc-observer-prompt.XXXXXX")"
+  prompt_file="$(mktemp "${observer_tmp_dir}/ecc-observer-prompt.XXXXXX")"
   cat > "$prompt_file" <<PROMPT
 Read ${analysis_file} and identify patterns for the project ${PROJECT_NAME} (user corrections, error resolutions, repeated workflows, tool preferences).
-If you find 3+ occurrences of the same pattern, create an instinct file in ${INSTINCTS_DIR}/<id>.md.
+If you find 3+ occurrences of the same pattern, you MUST write an instinct file directly to ${INSTINCTS_DIR}/<id>.md using the Write tool.
+Do NOT ask for permission to write files, do NOT describe what you would write, and do NOT stop at analysis when a qualifying pattern exists.
 
 CRITICAL: Every instinct file MUST use this exact format:
 
@@ -92,6 +95,7 @@ Rules:
 - Be conservative, only clear patterns with 3+ observations
 - Use narrow, specific triggers
 - Never include actual code snippets, only describe patterns
+- When a qualifying pattern exists, write or update the instinct file in this run instead of asking for confirmation
 - If a similar instinct already exists in ${INSTINCTS_DIR}/, update it instead of creating a duplicate
 - The YAML frontmatter (between --- markers) with id field is MANDATORY
 - If a pattern seems universal (not project-specific), set scope to global instead of project
@@ -114,7 +118,9 @@ PROMPT
   fi
 
   # Prevent observe.sh from recording this automated Haiku session as observations
-  ECC_SKIP_OBSERVE=1 ECC_HOOK_PROFILE=minimal claude --model haiku --max-turns "$max_turns" --print < "$prompt_file" >> "$LOG_FILE" 2>&1 &
+  ECC_SKIP_OBSERVE=1 ECC_HOOK_PROFILE=minimal claude --model haiku --max-turns "$max_turns" --print \
+    --allowedTools "Read,Write" \
+    < "$prompt_file" >> "$LOG_FILE" 2>&1 &
   claude_pid=$!
 
   (
@@ -170,6 +176,10 @@ trap on_usr1 USR1
 
 echo "$$" > "$PID_FILE"
 echo "[$(date)] Observer started for ${PROJECT_NAME} (PID: $$)" >> "$LOG_FILE"
+
+# Prune expired pending instincts before analysis
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+"${CLV2_PYTHON_CMD:-python3}" "${SCRIPT_DIR}/../scripts/instinct-cli.py" prune --quiet >> "$LOG_FILE" 2>&1 || echo "[$(date)] Warning: instinct prune failed (non-fatal)" >> "$LOG_FILE"
 
 while true; do
   sleep "$OBSERVER_INTERVAL_SECONDS" &

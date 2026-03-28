@@ -94,6 +94,7 @@ function runTests() {
       assert.ok(fs.existsSync(path.join(claudeRoot, 'rules', 'typescript', 'testing.md')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'commands', 'plan.md')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'scripts', 'hooks', 'session-end.js')));
+      assert.ok(fs.existsSync(path.join(claudeRoot, 'scripts', 'lib', 'utils.js')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'skills', 'tdd-workflow', 'SKILL.md')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'skills', 'coding-standards', 'SKILL.md')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'plugin.json')));
@@ -132,6 +133,7 @@ function runTests() {
       assert.ok(fs.existsSync(path.join(projectDir, '.cursor', 'commands', 'plan.md')));
       assert.ok(fs.existsSync(path.join(projectDir, '.cursor', 'hooks.json')));
       assert.ok(fs.existsSync(path.join(projectDir, '.cursor', 'hooks', 'session-start.js')));
+      assert.ok(fs.existsSync(path.join(projectDir, '.cursor', 'scripts', 'lib', 'utils.js')));
       assert.ok(fs.existsSync(path.join(projectDir, '.cursor', 'skills', 'tdd-workflow', 'SKILL.md')));
       assert.ok(fs.existsSync(path.join(projectDir, '.cursor', 'skills', 'coding-standards', 'SKILL.md')));
 
@@ -239,6 +241,7 @@ function runTests() {
       assert.ok(fs.existsSync(path.join(claudeRoot, 'commands', 'plan.md')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'hooks', 'hooks.json')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'scripts', 'hooks', 'session-end.js')));
+      assert.ok(fs.existsSync(path.join(claudeRoot, 'scripts', 'lib', 'session-manager.js')));
       assert.ok(fs.existsSync(path.join(claudeRoot, 'plugin.json')));
 
       const state = readJson(path.join(claudeRoot, 'ecc', 'install-state.json'));
@@ -258,7 +261,7 @@ function runTests() {
     }
   })) passed++; else failed++;
 
-  if (test('installs antigravity manifest profiles while skipping incompatible modules', () => {
+  if (test('installs antigravity manifest profiles while skipping only unsupported modules', () => {
     const homeDir = createTempDir('install-apply-home-');
     const projectDir = createTempDir('install-apply-project-');
 
@@ -269,14 +272,18 @@ function runTests() {
       assert.ok(fs.existsSync(path.join(projectDir, '.agent', 'rules', 'common-coding-style.md')));
       assert.ok(fs.existsSync(path.join(projectDir, '.agent', 'skills', 'architect.md')));
       assert.ok(fs.existsSync(path.join(projectDir, '.agent', 'workflows', 'plan.md')));
-      assert.ok(!fs.existsSync(path.join(projectDir, '.agent', 'skills', 'tdd-workflow', 'SKILL.md')));
+      assert.ok(fs.existsSync(path.join(projectDir, '.agent', 'skills', 'tdd-workflow', 'SKILL.md')));
 
       const state = readJson(path.join(projectDir, '.agent', 'ecc-install-state.json'));
       assert.strictEqual(state.request.profile, 'core');
       assert.strictEqual(state.request.legacyMode, false);
-      assert.deepStrictEqual(state.resolution.selectedModules, ['rules-core', 'agents-core', 'commands-core']);
-      assert.ok(state.resolution.skippedModules.includes('workflow-quality'));
-      assert.ok(state.resolution.skippedModules.includes('platform-configs'));
+      assert.deepStrictEqual(
+        state.resolution.selectedModules,
+        ['rules-core', 'agents-core', 'commands-core', 'platform-configs', 'workflow-quality']
+      );
+      assert.ok(state.resolution.skippedModules.includes('hooks-runtime'));
+      assert.ok(!state.resolution.skippedModules.includes('workflow-quality'));
+      assert.ok(!state.resolution.skippedModules.includes('platform-configs'));
     } finally {
       cleanup(homeDir);
       cleanup(projectDir);
@@ -345,6 +352,67 @@ function runTests() {
       assert.deepStrictEqual(state.request.excludeComponents, ['capability:orchestration']);
       assert.ok(state.resolution.selectedModules.includes('security'));
       assert.ok(!state.resolution.selectedModules.includes('orchestration'));
+    } finally {
+      cleanup(homeDir);
+      cleanup(projectDir);
+    }
+  })) passed++; else failed++;
+
+  if (test('auto-detects ecc-install.json from the project root', () => {
+    const homeDir = createTempDir('install-apply-home-');
+    const projectDir = createTempDir('install-apply-project-');
+    const configPath = path.join(projectDir, 'ecc-install.json');
+
+    try {
+      fs.writeFileSync(configPath, JSON.stringify({
+        version: 1,
+        target: 'claude',
+        profile: 'developer',
+        include: ['capability:security'],
+        exclude: ['capability:orchestration'],
+      }, null, 2));
+
+      const result = run([], { cwd: projectDir, homeDir });
+      assert.strictEqual(result.code, 0, result.stderr);
+
+      assert.ok(fs.existsSync(path.join(homeDir, '.claude', 'skills', 'security-review', 'SKILL.md')));
+      assert.ok(!fs.existsSync(path.join(homeDir, '.claude', 'skills', 'dmux-workflows', 'SKILL.md')));
+
+      const state = readJson(path.join(homeDir, '.claude', 'ecc', 'install-state.json'));
+      assert.strictEqual(state.request.profile, 'developer');
+      assert.deepStrictEqual(state.request.includeComponents, ['capability:security']);
+      assert.deepStrictEqual(state.request.excludeComponents, ['capability:orchestration']);
+      assert.ok(state.resolution.selectedModules.includes('security'));
+      assert.ok(!state.resolution.selectedModules.includes('orchestration'));
+    } finally {
+      cleanup(homeDir);
+      cleanup(projectDir);
+    }
+  })) passed++; else failed++;
+
+  if (test('preserves legacy language installs when a project config is present', () => {
+    const homeDir = createTempDir('install-apply-home-');
+    const projectDir = createTempDir('install-apply-project-');
+    const configPath = path.join(projectDir, 'ecc-install.json');
+
+    try {
+      fs.writeFileSync(configPath, JSON.stringify({
+        version: 1,
+        target: 'claude',
+        profile: 'developer',
+        include: ['capability:security'],
+      }, null, 2));
+
+      const result = run(['typescript'], { cwd: projectDir, homeDir });
+      assert.strictEqual(result.code, 0, result.stderr);
+
+      const state = readJson(path.join(homeDir, '.claude', 'ecc', 'install-state.json'));
+      assert.strictEqual(state.request.legacyMode, true);
+      assert.deepStrictEqual(state.request.legacyLanguages, ['typescript']);
+      assert.strictEqual(state.request.profile, null);
+      assert.deepStrictEqual(state.request.includeComponents, []);
+      assert.ok(state.resolution.selectedModules.includes('framework-language'));
+      assert.ok(!state.resolution.selectedModules.includes('security'));
     } finally {
       cleanup(homeDir);
       cleanup(projectDir);

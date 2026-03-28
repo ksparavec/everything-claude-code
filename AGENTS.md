@@ -1,6 +1,8 @@
 # Everything Claude Code (ECC) — Agent Instructions
 
-This is a **production-ready AI coding plugin** providing 25 specialized agents, 108 skills, 57 commands, and automated hook workflows for software development.
+This is a **production-ready AI coding plugin** providing 28 specialized agents, 125 skills, 60 commands, and automated hook workflows for software development.
+
+**Version:** 1.9.0
 
 ## Core Principles
 
@@ -23,6 +25,9 @@ This is a **production-ready AI coding plugin** providing 25 specialized agents,
 | e2e-runner | End-to-end Playwright testing | Critical user flows |
 | refactor-cleaner | Dead code cleanup | Code maintenance |
 | doc-updater | Documentation and codemaps | Updating docs |
+| docs-lookup | Documentation and API reference research | Library/API documentation questions |
+| cpp-reviewer | C++ code review | C++ projects |
+| cpp-build-resolver | C++ build errors | C++ build failures |
 | go-reviewer | Go code review | Go projects |
 | go-build-resolver | Go build errors | Go build failures |
 | kotlin-reviewer | Kotlin code review | Kotlin/Android/KMP projects |
@@ -36,6 +41,8 @@ This is a **production-ready AI coding plugin** providing 25 specialized agents,
 | harness-optimizer | Harness config tuning | Reliability, cost, throughput |
 | rust-reviewer | Rust code review | Rust projects |
 | rust-build-resolver | Rust build errors | Rust build failures |
+| pytorch-build-resolver | PyTorch runtime/CUDA/training errors | PyTorch build/training failures |
+| typescript-reviewer | TypeScript/JavaScript code review | TypeScript/JavaScript projects |
 
 ## Agent Orchestration
 
@@ -134,9 +141,9 @@ Troubleshoot failures: check test isolation → verify mocks → fix implementat
 ## Project Structure
 
 ```
-agents/          — 25 specialized subagents
-skills/          — 102 workflow skills and domain knowledge
-commands/        — 57 slash commands
+agents/          — 28 specialized subagents
+skills/          — 125 workflow skills and domain knowledge
+commands/        — 60 slash commands
 hooks/           — Trigger-based automations
 rules/           — Always-follow guidelines (common + per-language)
 scripts/         — Cross-platform Node.js utilities
