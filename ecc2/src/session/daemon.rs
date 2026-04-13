@@ -27,6 +27,14 @@ pub async fn run(db: StateStore, cfg: Config) -> Result<()> {
             tracing::error!("Session check failed: {e}");
         }
 
+        if let Err(e) = maybe_run_due_schedules(&db, &cfg).await {
+            tracing::error!("Scheduled task dispatch pass failed: {e}");
+        }
+
+        if let Err(e) = maybe_run_remote_dispatch(&db, &cfg).await {
+            tracing::error!("Remote dispatch pass failed: {e}");
+        }
+
         if let Err(e) = coordinate_backlog_cycle(&db, &cfg).await {
             tracing::error!("Backlog coordination pass failed: {e}");
         }
@@ -87,6 +95,33 @@ where
 fn check_sessions(db: &StateStore, cfg: &Config) -> Result<()> {
     let _ = manager::enforce_session_heartbeats(db, cfg)?;
     Ok(())
+}
+
+async fn maybe_run_due_schedules(db: &StateStore, cfg: &Config) -> Result<usize> {
+    let outcomes = manager::run_due_schedules(db, cfg, cfg.max_parallel_sessions).await?;
+    if !outcomes.is_empty() {
+        tracing::info!("Dispatched {} scheduled task(s)", outcomes.len());
+    }
+    Ok(outcomes.len())
+}
+
+async fn maybe_run_remote_dispatch(db: &StateStore, cfg: &Config) -> Result<usize> {
+    let outcomes =
+        manager::run_remote_dispatch_requests(db, cfg, cfg.max_parallel_sessions).await?;
+    let routed = outcomes
+        .iter()
+        .filter(|outcome| {
+            matches!(
+                outcome.action,
+                manager::RemoteDispatchAction::SpawnedTopLevel
+                    | manager::RemoteDispatchAction::Assigned(_)
+            )
+        })
+        .count();
+    if routed > 0 {
+        tracing::info!("Dispatched {} remote request(s)", routed);
+    }
+    Ok(routed)
 }
 
 async fn maybe_auto_dispatch(db: &StateStore, cfg: &Config) -> Result<usize> {
@@ -1202,9 +1237,11 @@ mod tests {
                 invoked_flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 Ok(manager::WorktreeBulkMergeOutcome {
                     merged: Vec::new(),
+                    rebased: Vec::new(),
                     active_with_worktree_ids: Vec::new(),
                     conflicted_session_ids: Vec::new(),
                     dirty_worktree_ids: Vec::new(),
+                    blocked_by_queue_session_ids: Vec::new(),
                     failures: Vec::new(),
                 })
             }
@@ -1239,9 +1276,16 @@ mod tests {
                         cleaned_worktree: true,
                     },
                 ],
+                rebased: vec![manager::WorktreeRebaseOutcome {
+                    session_id: "worker-r".to_string(),
+                    branch: "ecc/worker-r".to_string(),
+                    base_branch: "main".to_string(),
+                    already_up_to_date: false,
+                }],
                 active_with_worktree_ids: vec!["worker-c".to_string()],
                 conflicted_session_ids: vec!["worker-d".to_string()],
                 dirty_worktree_ids: vec!["worker-e".to_string()],
+                blocked_by_queue_session_ids: vec!["worker-f".to_string()],
                 failures: Vec::new(),
             })
         })

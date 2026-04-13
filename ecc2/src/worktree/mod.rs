@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::config::Config;
 use crate::session::WorktreeInfo;
@@ -36,6 +37,13 @@ pub struct MergeOutcome {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RebaseOutcome {
+    pub branch: String,
+    pub base_branch: String,
+    pub already_up_to_date: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct BranchConflictPreview {
     pub left_branch: String,
     pub right_branch: String,
@@ -54,6 +62,34 @@ pub struct GitStatusEntry {
     pub unstaged: bool,
     pub untracked: bool,
     pub conflicted: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DraftPrOptions {
+    pub base_branch: Option<String>,
+    pub labels: Vec<String>,
+    pub reviewers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitPatchSectionKind {
+    Staged,
+    Unstaged,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitPatchHunk {
+    pub section: GitPatchSectionKind,
+    pub header: String,
+    pub patch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitStatusPatchView {
+    pub path: String,
+    pub display_path: String,
+    pub patch: String,
+    pub hunks: Vec<GitPatchHunk>,
 }
 
 /// Create a new git worktree for an agent session.
@@ -318,6 +354,104 @@ pub fn reset_path(worktree: &WorktreeInfo, entry: &GitStatusEntry) -> Result<()>
     }
 }
 
+pub fn git_status_patch_view(
+    worktree: &WorktreeInfo,
+    entry: &GitStatusEntry,
+) -> Result<Option<GitStatusPatchView>> {
+    if entry.untracked {
+        return Ok(None);
+    }
+
+    let staged_patch =
+        git_diff_patch_text_for_paths(&worktree.path, &["--cached"], &[entry.path.clone()])?;
+    let unstaged_patch = git_diff_patch_text_for_paths(&worktree.path, &[], &[entry.path.clone()])?;
+
+    let mut sections = Vec::new();
+    let mut hunks = Vec::new();
+
+    if !staged_patch.trim().is_empty() {
+        sections.push(format!("--- Staged diff ---\n{}", staged_patch.trim_end()));
+        hunks.extend(extract_patch_hunks(
+            GitPatchSectionKind::Staged,
+            &staged_patch,
+        ));
+    }
+    if !unstaged_patch.trim().is_empty() {
+        sections.push(format!(
+            "--- Working tree diff ---\n{}",
+            unstaged_patch.trim_end()
+        ));
+        hunks.extend(extract_patch_hunks(
+            GitPatchSectionKind::Unstaged,
+            &unstaged_patch,
+        ));
+    }
+
+    if sections.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(GitStatusPatchView {
+            path: entry.path.clone(),
+            display_path: entry.display_path.clone(),
+            patch: sections.join("\n\n"),
+            hunks,
+        }))
+    }
+}
+
+pub fn stage_hunk(worktree: &WorktreeInfo, hunk: &GitPatchHunk) -> Result<()> {
+    if hunk.section != GitPatchSectionKind::Unstaged {
+        anyhow::bail!("selected hunk is already staged");
+    }
+    git_apply_patch(
+        &worktree.path,
+        &["--cached"],
+        &hunk.patch,
+        "stage selected hunk",
+    )
+}
+
+pub fn unstage_hunk(worktree: &WorktreeInfo, hunk: &GitPatchHunk) -> Result<()> {
+    if hunk.section != GitPatchSectionKind::Staged {
+        anyhow::bail!("selected hunk is not staged");
+    }
+    git_apply_patch(
+        &worktree.path,
+        &["-R", "--cached"],
+        &hunk.patch,
+        "unstage selected hunk",
+    )
+}
+
+pub fn reset_hunk(
+    worktree: &WorktreeInfo,
+    entry: &GitStatusEntry,
+    hunk: &GitPatchHunk,
+) -> Result<()> {
+    if entry.untracked {
+        anyhow::bail!("cannot reset hunks for untracked files");
+    }
+
+    match hunk.section {
+        GitPatchSectionKind::Unstaged => {
+            git_apply_patch(&worktree.path, &["-R"], &hunk.patch, "reset selected hunk")
+        }
+        GitPatchSectionKind::Staged => {
+            if entry.unstaged {
+                anyhow::bail!(
+                    "cannot reset a staged hunk while the file also has unstaged changes; unstage it first"
+                );
+            }
+            git_apply_patch(
+                &worktree.path,
+                &["-R", "--index"],
+                &hunk.patch,
+                "reset selected staged hunk",
+            )
+        }
+    }
+}
+
 pub fn commit_staged(worktree: &WorktreeInfo, message: &str) -> Result<String> {
     let message = message.trim();
     if message.is_empty() {
@@ -349,7 +483,9 @@ pub fn commit_staged(worktree: &WorktreeInfo, message: &str) -> Result<String> {
         anyhow::bail!("git rev-parse failed: {stderr}");
     }
 
-    Ok(String::from_utf8_lossy(&rev_parse.stdout).trim().to_string())
+    Ok(String::from_utf8_lossy(&rev_parse.stdout)
+        .trim()
+        .to_string())
 }
 
 pub fn latest_commit_subject(worktree: &WorktreeInfo) -> Result<String> {
@@ -368,19 +504,50 @@ pub fn latest_commit_subject(worktree: &WorktreeInfo) -> Result<String> {
 }
 
 pub fn create_draft_pr(worktree: &WorktreeInfo, title: &str, body: &str) -> Result<String> {
-    create_draft_pr_with_gh(worktree, title, body, Path::new("gh"))
+    create_draft_pr_with_options(worktree, title, body, &DraftPrOptions::default())
+}
+
+pub fn create_draft_pr_with_options(
+    worktree: &WorktreeInfo,
+    title: &str,
+    body: &str,
+    options: &DraftPrOptions,
+) -> Result<String> {
+    create_draft_pr_with_gh(worktree, title, body, options, Path::new("gh"))
+}
+
+pub fn github_compare_url(worktree: &WorktreeInfo) -> Result<Option<String>> {
+    let repo_root = base_checkout_path(worktree)?;
+    let origin = git_remote_origin_url(&repo_root)?;
+    let Some(repo_url) = github_repo_web_url(&origin) else {
+        return Ok(None);
+    };
+
+    Ok(Some(format!(
+        "{repo_url}/compare/{}...{}?expand=1",
+        percent_encode_git_ref(&worktree.base_branch),
+        percent_encode_git_ref(&worktree.branch)
+    )))
 }
 
 fn create_draft_pr_with_gh(
     worktree: &WorktreeInfo,
     title: &str,
     body: &str,
+    options: &DraftPrOptions,
     gh_bin: &Path,
 ) -> Result<String> {
     let title = title.trim();
     if title.is_empty() {
         anyhow::bail!("PR title cannot be empty");
     }
+
+    let base_branch = options
+        .base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&worktree.base_branch);
 
     let push = Command::new("git")
         .arg("-C")
@@ -393,18 +560,36 @@ fn create_draft_pr_with_gh(
         anyhow::bail!("git push failed: {stderr}");
     }
 
-    let output = Command::new(gh_bin)
+    let mut command = Command::new(gh_bin);
+    command
         .arg("pr")
         .arg("create")
         .arg("--draft")
         .arg("--base")
-        .arg(&worktree.base_branch)
+        .arg(base_branch)
         .arg("--head")
         .arg(&worktree.branch)
         .arg("--title")
         .arg(title)
         .arg("--body")
-        .arg(body)
+        .arg(body);
+    for label in options
+        .labels
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        command.arg("--label").arg(label);
+    }
+    for reviewer in options
+        .reviewers
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        command.arg("--reviewer").arg(reviewer);
+    }
+    let output = command
         .current_dir(&worktree.path)
         .output()
         .context("Failed to create draft PR with gh")?;
@@ -414,6 +599,67 @@ fn create_draft_pr_with_gh(
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn git_remote_origin_url(repo_root: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .context("Failed to resolve git origin remote")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git remote get-url origin failed: {stderr}");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn github_repo_web_url(origin: &str) -> Option<String> {
+    let trimmed = origin.trim().trim_end_matches(".git");
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("git@") {
+        let (host, path) = rest.split_once(':')?;
+        return Some(format!("https://{host}/{}", path.trim_start_matches('/')));
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("ssh://") {
+        return parse_httpish_remote(rest);
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("https://") {
+        return parse_httpish_remote(rest);
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("http://") {
+        return parse_httpish_remote(rest);
+    }
+
+    None
+}
+
+fn parse_httpish_remote(rest: &str) -> Option<String> {
+    let without_user = rest.strip_prefix("git@").unwrap_or(rest);
+    let (host, path) = without_user.split_once('/')?;
+    Some(format!("https://{host}/{}", path.trim_start_matches('/')))
+}
+
+fn percent_encode_git_ref(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        let ch = byte as char;
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '~') {
+            encoded.push(ch);
+        } else {
+            encoded.push('%');
+            encoded.push_str(&format!("{byte:02X}"));
+        }
+    }
+    encoded
 }
 
 pub fn diff_file_preview(worktree: &WorktreeInfo, limit: usize) -> Result<Vec<String>> {
@@ -604,7 +850,9 @@ pub fn has_uncommitted_changes(worktree: &WorktreeInfo) -> Result<bool> {
 }
 
 pub fn has_staged_changes(worktree: &WorktreeInfo) -> Result<bool> {
-    Ok(git_status_entries(worktree)?.iter().any(|entry| entry.staged))
+    Ok(git_status_entries(worktree)?
+        .iter()
+        .any(|entry| entry.staged))
 }
 
 pub fn merge_into_base(worktree: &WorktreeInfo) -> Result<MergeOutcome> {
@@ -660,6 +908,65 @@ pub fn merge_into_base(worktree: &WorktreeInfo) -> Result<MergeOutcome> {
         base_branch: worktree.base_branch.clone(),
         already_up_to_date: merged_output.contains("Already up to date."),
     })
+}
+
+pub fn rebase_onto_base(worktree: &WorktreeInfo) -> Result<RebaseOutcome> {
+    if has_uncommitted_changes(worktree)? {
+        anyhow::bail!(
+            "Worktree {} has uncommitted changes; commit or discard them before rebasing",
+            worktree.branch
+        );
+    }
+
+    let repo_root = base_checkout_path(worktree)?;
+    let before_head = branch_head_oid_in_repo(&repo_root, &worktree.branch)?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&worktree.path)
+        .args(["rebase", &worktree.base_branch])
+        .output()
+        .context("Failed to rebase worktree branch onto base")?;
+
+    if !output.status.success() {
+        let abort_output = Command::new("git")
+            .arg("-C")
+            .arg(&worktree.path)
+            .args(["rebase", "--abort"])
+            .output()
+            .context("Failed to abort unsuccessful rebase")?;
+        let abort_warning = if abort_output.status.success() {
+            String::new()
+        } else {
+            format!(
+                " (rebase abort warning: {})",
+                String::from_utf8_lossy(&abort_output.stderr).trim()
+            )
+        };
+        let stderr = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        anyhow::bail!("git rebase failed: {}{}", stderr.trim(), abort_warning);
+    }
+
+    let after_head = branch_head_oid_in_repo(&repo_root, &worktree.branch)?;
+    let rebase_output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    Ok(RebaseOutcome {
+        branch: worktree.branch.clone(),
+        base_branch: worktree.base_branch.clone(),
+        already_up_to_date: before_head == after_head || rebase_output.contains("up to date"),
+    })
+}
+
+pub fn branch_head_oid(worktree: &WorktreeInfo, branch: &str) -> Result<String> {
+    let repo_root = base_checkout_path(worktree)?;
+    branch_head_oid_in_repo(&repo_root, branch)
 }
 
 fn git_diff_shortstat(worktree_path: &Path, extra_args: &[&str]) -> Result<Option<String>> {
@@ -742,6 +1049,39 @@ fn git_diff_patch_lines(worktree_path: &Path, extra_args: &[&str]) -> Result<Vec
     Ok(parse_nonempty_lines(&output.stdout))
 }
 
+fn git_diff_patch_text_for_paths(
+    worktree_path: &Path,
+    extra_args: &[&str],
+    paths: &[String],
+) -> Result<String> {
+    if paths.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut command = Command::new("git");
+    command
+        .arg("-C")
+        .arg(worktree_path)
+        .arg("diff")
+        .args(["--patch", "--find-renames"]);
+    command.args(extra_args);
+    command.arg("--");
+    for path in paths {
+        command.arg(path);
+    }
+
+    let output = command
+        .output()
+        .context("Failed to generate filtered git patch")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git diff failed: {stderr}");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 fn git_diff_patch_lines_for_paths(
     worktree_path: &Path,
     extra_args: &[&str],
@@ -777,6 +1117,86 @@ fn git_diff_patch_lines_for_paths(
     }
 
     Ok(parse_nonempty_lines(&output.stdout))
+}
+
+fn extract_patch_hunks(section: GitPatchSectionKind, patch_text: &str) -> Vec<GitPatchHunk> {
+    let lines: Vec<&str> = patch_text.lines().collect();
+    let Some(diff_start) = lines
+        .iter()
+        .position(|line| line.starts_with("diff --git "))
+    else {
+        return Vec::new();
+    };
+    let Some(first_hunk_start) = lines
+        .iter()
+        .enumerate()
+        .skip(diff_start)
+        .find_map(|(index, line)| line.starts_with("@@").then_some(index))
+    else {
+        return Vec::new();
+    };
+
+    let header_lines = lines[diff_start..first_hunk_start].to_vec();
+    let hunk_starts = lines
+        .iter()
+        .enumerate()
+        .skip(first_hunk_start)
+        .filter_map(|(index, line)| line.starts_with("@@").then_some(index))
+        .collect::<Vec<_>>();
+
+    hunk_starts
+        .iter()
+        .enumerate()
+        .map(|(position, start)| {
+            let end = hunk_starts
+                .get(position + 1)
+                .copied()
+                .unwrap_or(lines.len());
+            let mut patch_lines = header_lines
+                .iter()
+                .map(|line| (*line).to_string())
+                .collect::<Vec<_>>();
+            patch_lines.extend(lines[*start..end].iter().map(|line| (*line).to_string()));
+            GitPatchHunk {
+                section,
+                header: lines[*start].to_string(),
+                patch: format!("{}\n", patch_lines.join("\n")),
+            }
+        })
+        .collect()
+}
+
+fn git_apply_patch(worktree_path: &Path, args: &[&str], patch: &str, action: &str) -> Result<()> {
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .arg("apply")
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("Failed to {action}"))?;
+
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .context("Failed to open git apply stdin")?;
+        stdin
+            .write_all(patch.as_bytes())
+            .with_context(|| format!("Failed to write patch for {action}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .with_context(|| format!("Failed to wait for git apply while trying to {action}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git apply failed while trying to {action}: {stderr}");
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -925,8 +1345,12 @@ fn dependency_fingerprint(root: &Path, files: &[&str]) -> Result<String> {
     let mut hasher = Sha256::new();
     for rel in files {
         let path = root.join(rel);
-        let content = fs::read(&path)
-            .with_context(|| format!("Failed to read dependency fingerprint input {}", path.display()))?;
+        let content = fs::read(&path).with_context(|| {
+            format!(
+                "Failed to read dependency fingerprint input {}",
+                path.display()
+            )
+        })?;
         hasher.update(rel.as_bytes());
         hasher.update([0]);
         hasher.update(&content);
@@ -957,10 +1381,8 @@ fn is_symlink_to(path: &Path, target: &Path) -> Result<bool> {
 fn remove_symlink(path: &Path) -> Result<()> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::IsADirectory => {
-            fs::remove_dir(path)
-                .with_context(|| format!("Failed to remove dependency cache link {}", path.display()))
-        }
+        Err(error) if error.kind() == std::io::ErrorKind::IsADirectory => fs::remove_dir(path)
+            .with_context(|| format!("Failed to remove dependency cache link {}", path.display())),
         Err(error) => Err(error)
             .with_context(|| format!("Failed to remove dependency cache link {}", path.display())),
     }
@@ -1032,6 +1454,22 @@ fn git_status_short(worktree_path: &Path) -> Result<Vec<String>> {
     Ok(parse_nonempty_lines(&output.stdout))
 }
 
+fn branch_head_oid_in_repo(repo_root: &Path, branch: &str) -> Result<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["rev-parse", branch])
+        .output()
+        .context("Failed to resolve branch head")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git rev-parse failed: {stderr}");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 fn validate_branch_name(repo_root: &Path, branch: &str) -> Result<()> {
     let output = Command::new("git")
         .arg("-C")
@@ -1072,10 +1510,7 @@ fn parse_git_status_entry(line: &str) -> Option<GitStatusEntry> {
         .to_string();
     let conflicted = matches!(
         (index_status, worktree_status),
-        ('U', _)
-            | (_, 'U')
-            | ('A', 'A')
-            | ('D', 'D')
+        ('U', _) | (_, 'U') | ('A', 'A') | ('D', 'D')
     );
     Some(GitStatusEntry {
         path: normalized_path,
@@ -1202,6 +1637,18 @@ mod tests {
             anyhow::bail!("{}", String::from_utf8_lossy(&output.stderr));
         }
         Ok(())
+    }
+
+    fn git_stdout(repo: &Path, args: &[&str]) -> Result<String> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .output()?;
+        if !output.status.success() {
+            anyhow::bail!("{}", String::from_utf8_lossy(&output.stderr));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
     fn init_repo(root: &Path) -> Result<PathBuf> {
@@ -1490,9 +1937,135 @@ mod tests {
     }
 
     #[test]
+    fn rebase_onto_base_replays_simple_branch_after_base_advances() -> Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("ecc2-worktree-rebase-success-{}", Uuid::new_v4()));
+        let repo = init_repo(&root)?;
+
+        let alpha_dir = root.join("wt-alpha");
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "ecc/alpha",
+                alpha_dir.to_str().expect("utf8 path"),
+                "HEAD",
+            ],
+        )?;
+        fs::write(alpha_dir.join("README.md"), "hello\nalpha\n")?;
+        run_git(&alpha_dir, &["commit", "-am", "alpha change"])?;
+
+        let beta_dir = root.join("wt-beta");
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "ecc/beta",
+                beta_dir.to_str().expect("utf8 path"),
+                "HEAD",
+            ],
+        )?;
+        fs::write(beta_dir.join("README.md"), "hello\nalpha\n")?;
+        run_git(&beta_dir, &["commit", "-am", "beta shared change"])?;
+        fs::write(beta_dir.join("README.md"), "hello\nalpha\nbeta\n")?;
+        run_git(&beta_dir, &["commit", "-am", "beta follow-up"])?;
+
+        run_git(&repo, &["merge", "--no-edit", "ecc/alpha"])?;
+
+        let beta = WorktreeInfo {
+            path: beta_dir.clone(),
+            branch: "ecc/beta".to_string(),
+            base_branch: "main".to_string(),
+        };
+        let readiness_before = merge_readiness(&beta)?;
+        assert_eq!(readiness_before.status, MergeReadinessStatus::Conflicted);
+
+        let outcome = rebase_onto_base(&beta)?;
+        assert_eq!(outcome.branch, "ecc/beta");
+        assert_eq!(outcome.base_branch, "main");
+        assert!(!outcome.already_up_to_date);
+
+        let readiness_after = merge_readiness(&beta)?;
+        assert_eq!(readiness_after.status, MergeReadinessStatus::Ready);
+        assert_eq!(
+            fs::read_to_string(beta_dir.join("README.md"))?,
+            "hello\nalpha\nbeta\n"
+        );
+
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["worktree", "remove", "--force"])
+            .arg(&alpha_dir)
+            .output();
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["worktree", "remove", "--force"])
+            .arg(&beta_dir)
+            .output();
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn rebase_onto_base_aborts_failed_rebase() -> Result<()> {
+        let root =
+            std::env::temp_dir().join(format!("ecc2-worktree-rebase-fail-{}", Uuid::new_v4()));
+        let repo = init_repo(&root)?;
+
+        let worktree_dir = root.join("wt-conflict");
+        run_git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "ecc/conflict",
+                worktree_dir.to_str().expect("utf8 path"),
+                "HEAD",
+            ],
+        )?;
+
+        fs::write(worktree_dir.join("README.md"), "hello\nbranch\n")?;
+        run_git(&worktree_dir, &["commit", "-am", "branch change"])?;
+        fs::write(repo.join("README.md"), "hello\nmain\n")?;
+        run_git(&repo, &["commit", "-am", "main change"])?;
+
+        let info = WorktreeInfo {
+            path: worktree_dir.clone(),
+            branch: "ecc/conflict".to_string(),
+            base_branch: "main".to_string(),
+        };
+
+        let error = rebase_onto_base(&info).expect_err("rebase should fail");
+        assert!(error.to_string().contains("git rebase failed"));
+        assert!(git_status_short(&worktree_dir)?.is_empty());
+        assert_eq!(
+            merge_readiness(&info)?.status,
+            MergeReadinessStatus::Conflicted
+        );
+
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["worktree", "remove", "--force"])
+            .arg(&worktree_dir)
+            .output();
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
     fn branch_conflict_preview_reports_conflicting_branches() -> Result<()> {
-        let root = std::env::temp_dir()
-            .join(format!("ecc2-worktree-branch-conflict-preview-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!(
+            "ecc2-worktree-branch-conflict-preview-{}",
+            Uuid::new_v4()
+        ));
         let repo = init_repo(&root)?;
 
         let left_dir = root.join("wt-left");
@@ -1538,8 +2111,8 @@ mod tests {
             base_branch: "main".to_string(),
         };
 
-        let preview = branch_conflict_preview(&left, &right, 12)?
-            .expect("expected branch conflict preview");
+        let preview =
+            branch_conflict_preview(&left, &right, 12)?.expect("expected branch conflict preview");
         assert_eq!(preview.conflicts, vec!["README.md".to_string()]);
         assert!(preview
             .left_patch_preview
@@ -1622,7 +2195,167 @@ mod tests {
             .arg(&repo)
             .args(["log", "-1", "--pretty=%s"])
             .output()?;
-        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "update readme");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "update readme"
+        );
+
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn git_status_patch_view_supports_hunk_stage_and_unstage() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("ecc2-hunk-stage-{}", Uuid::new_v4()));
+        let repo = init_repo(&root)?;
+        let worktree = WorktreeInfo {
+            path: repo.clone(),
+            branch: "main".to_string(),
+            base_branch: "main".to_string(),
+        };
+
+        let original = (1..=12)
+            .map(|index| format!("line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(repo.join("notes.txt"), format!("{original}\n"))?;
+        run_git(&repo, &["add", "notes.txt"])?;
+        run_git(&repo, &["commit", "-m", "add notes"])?;
+
+        let updated = (1..=12)
+            .map(|index| match index {
+                2 => "line 2 changed".to_string(),
+                11 => "line 11 changed".to_string(),
+                _ => format!("line {index}"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(repo.join("notes.txt"), format!("{updated}\n"))?;
+
+        let entry = git_status_entries(&worktree)?
+            .into_iter()
+            .find(|entry| entry.path == "notes.txt")
+            .expect("notes status entry");
+        let patch =
+            git_status_patch_view(&worktree, &entry)?.expect("selected-file patch view for notes");
+        assert_eq!(patch.hunks.len(), 2);
+        assert!(patch
+            .hunks
+            .iter()
+            .all(|hunk| hunk.section == GitPatchSectionKind::Unstaged));
+
+        stage_hunk(&worktree, &patch.hunks[0])?;
+
+        let cached = git_stdout(&repo, &["diff", "--cached", "--", "notes.txt"])?;
+        assert!(cached.contains("line 2 changed"));
+        assert!(!cached.contains("line 11 changed"));
+
+        let working = git_stdout(&repo, &["diff", "--", "notes.txt"])?;
+        assert!(!working.contains("line 2 changed"));
+        assert!(working.contains("line 11 changed"));
+
+        let entry = git_status_entries(&worktree)?
+            .into_iter()
+            .find(|entry| entry.path == "notes.txt")
+            .expect("notes status entry after stage");
+        let patch = git_status_patch_view(&worktree, &entry)?.expect("patch after hunk stage");
+        let staged_hunk = patch
+            .hunks
+            .iter()
+            .find(|hunk| hunk.section == GitPatchSectionKind::Staged)
+            .cloned()
+            .expect("staged hunk");
+
+        unstage_hunk(&worktree, &staged_hunk)?;
+
+        let cached = git_stdout(&repo, &["diff", "--cached", "--", "notes.txt"])?;
+        assert!(cached.trim().is_empty());
+
+        let working = git_stdout(&repo, &["diff", "--", "notes.txt"])?;
+        assert!(working.contains("line 2 changed"));
+        assert!(working.contains("line 11 changed"));
+
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn reset_hunk_discards_unstaged_then_staged_hunks() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("ecc2-hunk-reset-{}", Uuid::new_v4()));
+        let repo = init_repo(&root)?;
+        let worktree = WorktreeInfo {
+            path: repo.clone(),
+            branch: "main".to_string(),
+            base_branch: "main".to_string(),
+        };
+
+        let original = (1..=12)
+            .map(|index| format!("line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(repo.join("notes.txt"), format!("{original}\n"))?;
+        run_git(&repo, &["add", "notes.txt"])?;
+        run_git(&repo, &["commit", "-m", "add notes"])?;
+
+        let updated = (1..=12)
+            .map(|index| match index {
+                2 => "line 2 changed".to_string(),
+                11 => "line 11 changed".to_string(),
+                _ => format!("line {index}"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(repo.join("notes.txt"), format!("{updated}\n"))?;
+
+        let entry = git_status_entries(&worktree)?
+            .into_iter()
+            .find(|entry| entry.path == "notes.txt")
+            .expect("notes status entry");
+        let patch =
+            git_status_patch_view(&worktree, &entry)?.expect("selected-file patch view for notes");
+        stage_hunk(&worktree, &patch.hunks[0])?;
+
+        let entry = git_status_entries(&worktree)?
+            .into_iter()
+            .find(|entry| entry.path == "notes.txt")
+            .expect("notes status entry after stage");
+        let patch = git_status_patch_view(&worktree, &entry)?.expect("patch after stage");
+        let unstaged_hunk = patch
+            .hunks
+            .iter()
+            .find(|hunk| hunk.section == GitPatchSectionKind::Unstaged)
+            .cloned()
+            .expect("unstaged hunk");
+        reset_hunk(&worktree, &entry, &unstaged_hunk)?;
+
+        let working = git_stdout(&repo, &["diff", "--", "notes.txt"])?;
+        assert!(working.trim().is_empty());
+
+        let entry = git_status_entries(&worktree)?
+            .into_iter()
+            .find(|entry| entry.path == "notes.txt")
+            .expect("notes status entry after unstaged reset");
+        assert!(!entry.unstaged);
+
+        let patch = git_status_patch_view(&worktree, &entry)?.expect("staged-only patch");
+        let staged_hunk = patch
+            .hunks
+            .iter()
+            .find(|hunk| hunk.section == GitPatchSectionKind::Staged)
+            .cloned()
+            .expect("staged hunk");
+        reset_hunk(&worktree, &entry, &staged_hunk)?;
+
+        assert!(git_stdout(&repo, &["diff", "--cached", "--", "notes.txt"])?
+            .trim()
+            .is_empty());
+        assert!(git_stdout(&repo, &["diff", "--", "notes.txt"])?
+            .trim()
+            .is_empty());
+        assert_eq!(
+            fs::read_to_string(repo.join("notes.txt"))?,
+            format!("{original}\n")
+        );
 
         let _ = fs::remove_dir_all(root);
         Ok(())
@@ -1652,8 +2385,19 @@ mod tests {
         let root = std::env::temp_dir().join(format!("ecc2-pr-create-{}", Uuid::new_v4()));
         let repo = init_repo(&root)?;
         let remote = root.join("remote.git");
-        run_git(&root, &["init", "--bare", remote.to_str().expect("utf8 path")])?;
-        run_git(&repo, &["remote", "add", "origin", remote.to_str().expect("utf8 path")])?;
+        run_git(
+            &root,
+            &["init", "--bare", remote.to_str().expect("utf8 path")],
+        )?;
+        run_git(
+            &repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                remote.to_str().expect("utf8 path"),
+            ],
+        )?;
         run_git(&repo, &["push", "-u", "origin", "main"])?;
         run_git(&repo, &["checkout", "-b", "feat/pr-test"])?;
         fs::write(repo.join("README.md"), "pr test\n")?;
@@ -1686,7 +2430,13 @@ mod tests {
             base_branch: "main".to_string(),
         };
 
-        let url = create_draft_pr_with_gh(&worktree, "My PR", "Body line", &gh_path)?;
+        let url = create_draft_pr_with_gh(
+            &worktree,
+            "My PR",
+            "Body line",
+            &DraftPrOptions::default(),
+            &gh_path,
+        )?;
         assert_eq!(url, "https://github.com/example/repo/pull/123");
 
         let remote_branch = Command::new("git")
@@ -1712,11 +2462,125 @@ mod tests {
     }
 
     #[test]
+    fn create_draft_pr_forwards_custom_base_labels_and_reviewers() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("ecc2-pr-create-options-{}", Uuid::new_v4()));
+        let repo = init_repo(&root)?;
+        let remote = root.join("remote.git");
+        run_git(
+            &root,
+            &["init", "--bare", remote.to_str().expect("utf8 path")],
+        )?;
+        run_git(
+            &repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                remote.to_str().expect("utf8 path"),
+            ],
+        )?;
+        run_git(&repo, &["push", "-u", "origin", "main"])?;
+        run_git(&repo, &["checkout", "-b", "feat/pr-options"])?;
+        fs::write(repo.join("README.md"), "pr options\n")?;
+        run_git(&repo, &["commit", "-am", "pr options"])?;
+
+        let bin_dir = root.join("bin");
+        fs::create_dir_all(&bin_dir)?;
+        let gh_path = bin_dir.join("gh");
+        let args_path = root.join("gh-args-options.txt");
+        fs::write(
+            &gh_path,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{}\"\nprintf '%s\\n' 'https://github.com/example/repo/pull/456'\n",
+                args_path.display()
+            ),
+        )?;
+        let mut perms = fs::metadata(&gh_path)?.permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+            fs::set_permissions(&gh_path, perms)?;
+        }
+        #[cfg(not(unix))]
+        fs::set_permissions(&gh_path, perms)?;
+
+        let worktree = WorktreeInfo {
+            path: repo.clone(),
+            branch: "feat/pr-options".to_string(),
+            base_branch: "main".to_string(),
+        };
+        let options = DraftPrOptions {
+            base_branch: Some("release/2.0".to_string()),
+            labels: vec!["billing".to_string(), "ui".to_string()],
+            reviewers: vec!["alice".to_string(), "bob".to_string()],
+        };
+
+        let url = create_draft_pr_with_gh(&worktree, "My PR", "Body line", &options, &gh_path)?;
+        assert_eq!(url, "https://github.com/example/repo/pull/456");
+
+        let gh_args = fs::read_to_string(&args_path)?;
+        assert!(gh_args.contains("--base\nrelease/2.0"));
+        assert!(gh_args.contains("--label\nbilling"));
+        assert!(gh_args.contains("--label\nui"));
+        assert!(gh_args.contains("--reviewer\nalice"));
+        assert!(gh_args.contains("--reviewer\nbob"));
+
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn github_compare_url_uses_origin_remote_and_encodes_refs() -> Result<()> {
+        let root = std::env::temp_dir().join(format!("ecc2-compare-url-{}", Uuid::new_v4()));
+        let repo = init_repo(&root)?;
+        run_git(
+            &repo,
+            &["remote", "add", "origin", "git@github.com:example/ecc.git"],
+        )?;
+
+        let worktree = WorktreeInfo {
+            path: repo.clone(),
+            branch: "ecc/worker-123".to_string(),
+            base_branch: "main".to_string(),
+        };
+
+        let url = github_compare_url(&worktree)?.expect("compare url");
+        assert_eq!(
+            url,
+            "https://github.com/example/ecc/compare/main...ecc%2Fworker-123?expand=1"
+        );
+
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn github_repo_web_url_supports_multiple_remote_formats() {
+        assert_eq!(
+            github_repo_web_url("git@github.com:example/ecc.git").as_deref(),
+            Some("https://github.com/example/ecc")
+        );
+        assert_eq!(
+            github_repo_web_url("https://github.example.com/org/repo.git").as_deref(),
+            Some("https://github.example.com/org/repo")
+        );
+        assert_eq!(
+            github_repo_web_url("ssh://git@github.example.com/org/repo.git").as_deref(),
+            Some("https://github.example.com/org/repo")
+        );
+    }
+
+    #[test]
     fn create_for_session_links_shared_node_modules_cache() -> Result<()> {
-        let root = std::env::temp_dir().join(format!("ecc2-worktree-node-cache-{}", Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("ecc2-worktree-node-cache-{}", Uuid::new_v4()));
         let repo = init_repo(&root)?;
         fs::write(repo.join("package.json"), "{\n  \"name\": \"repo\"\n}\n")?;
-        fs::write(repo.join("package-lock.json"), "{\n  \"lockfileVersion\": 3\n}\n")?;
+        fs::write(
+            repo.join("package-lock.json"),
+            "{\n  \"lockfileVersion\": 3\n}\n",
+        )?;
         fs::create_dir_all(repo.join("node_modules"))?;
         fs::write(repo.join("node_modules/.cache-marker"), "shared\n")?;
         run_git(&repo, &["add", "package.json", "package-lock.json"])?;
@@ -1727,7 +2591,9 @@ mod tests {
         let worktree = create_for_session_in_repo("worker-123", &cfg, &repo)?;
 
         let node_modules = worktree.path.join("node_modules");
-        assert!(fs::symlink_metadata(&node_modules)?.file_type().is_symlink());
+        assert!(fs::symlink_metadata(&node_modules)?
+            .file_type()
+            .is_symlink());
         assert_eq!(fs::read_link(&node_modules)?, repo.join("node_modules"));
 
         remove(&worktree)?;
@@ -1741,7 +2607,10 @@ mod tests {
             std::env::temp_dir().join(format!("ecc2-worktree-node-fallback-{}", Uuid::new_v4()));
         let repo = init_repo(&root)?;
         fs::write(repo.join("package.json"), "{\n  \"name\": \"repo\"\n}\n")?;
-        fs::write(repo.join("package-lock.json"), "{\n  \"lockfileVersion\": 3\n}\n")?;
+        fs::write(
+            repo.join("package-lock.json"),
+            "{\n  \"lockfileVersion\": 3\n}\n",
+        )?;
         fs::create_dir_all(repo.join("node_modules"))?;
         fs::write(repo.join("node_modules/.cache-marker"), "shared\n")?;
         run_git(&repo, &["add", "package.json", "package-lock.json"])?;
@@ -1752,7 +2621,9 @@ mod tests {
         let worktree = create_for_session_in_repo("worker-123", &cfg, &repo)?;
 
         let node_modules = worktree.path.join("node_modules");
-        assert!(fs::symlink_metadata(&node_modules)?.file_type().is_symlink());
+        assert!(fs::symlink_metadata(&node_modules)?
+            .file_type()
+            .is_symlink());
 
         fs::write(
             worktree.path.join("package-lock.json"),
@@ -1761,7 +2632,9 @@ mod tests {
         let applied = sync_shared_dependency_dirs(&worktree)?;
         assert!(applied.is_empty());
         assert!(node_modules.is_dir());
-        assert!(!fs::symlink_metadata(&node_modules)?.file_type().is_symlink());
+        assert!(!fs::symlink_metadata(&node_modules)?
+            .file_type()
+            .is_symlink());
         assert!(repo.join("node_modules/.cache-marker").exists());
 
         remove(&worktree)?;
