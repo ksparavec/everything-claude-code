@@ -6,10 +6,10 @@
   "plugins": [
     {
       "name": "ecc",
-      "version": "1.10.0",
+      "version": "2.0.0-rc.1",
       "source": {
         "source": "local",
-        "path": "../.."
+        "path": "./"
       },
       "policy": {
         "installation": "AVAILABLE",

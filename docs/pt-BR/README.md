@@ -1,4 +1,4 @@
-**Idioma:** [English](../../README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | [한국어](../ko-KR/README.md) | Português (Brasil) | [Türkçe](../tr/README.md)
+**Idioma:** [English](../../README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | [한국어](../ko-KR/README.md) | Português (Brasil) | [Türkçe](../tr/README.md) | [Русский](../ru/README.md) | [Tiếng Việt](../vi-VN/README.md) | [ไทย](../th/README.md)
 
 # Everything Claude Code
 
@@ -22,9 +22,9 @@
 
 <div align="center">
 
-**Idioma / Language / 语言 / Dil**
+**Idioma / Language / 语言 / Dil / Язык / Ngôn ngữ**
 
-[**English**](../../README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | [한국어](../ko-KR/README.md) | [Português (Brasil)](README.md) | [Türkçe](../tr/README.md)
+[**English**](../../README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | [한국어](../ko-KR/README.md) | [Português (Brasil)](README.md) | [Türkçe](../tr/README.md) | [Русский](../ru/README.md) | [Tiếng Việt](../vi-VN/README.md) | [ไทย](../th/README.md)
 
 </div>
 
@@ -80,7 +80,7 @@ Este repositório contém apenas o código. Os guias explicam tudo.
 
 ## O Que Há de Novo
 
-### v1.10.0 — Sincronização de Superfície, Fluxos Operacionais e ECC 2.0 Alpha (Abr 2026)
+### v2.0.0-rc.1 — Sincronização de Superfície, Fluxos Operacionais e ECC 2.0 Alpha (Abr 2026)
 
 - **Superfície pública sincronizada com o repositório real** — metadados, contagens de catálogo, manifests de plugin e documentação de instalação agora refletem a superfície OSS que realmente é entregue.
 - **Expansão dos fluxos operacionais e externos** — `brand-voice`, `social-graph-ranker`, `customer-billing-ops`, `google-workspace-ops` e skills relacionadas fortalecem a trilha operacional dentro do mesmo sistema.
@@ -342,12 +342,12 @@ Ou adicione diretamente ao seu `~/.claude/settings.json`:
 >
 > # Opção A: Regras no nível do usuário (aplica a todos os projetos)
 > mkdir -p ~/.claude/rules
-> cp -r everything-claude-code/rules/common/* ~/.claude/rules/
-> cp -r everything-claude-code/rules/typescript/* ~/.claude/rules/   # escolha sua stack
+> cp -r everything-claude-code/rules/common ~/.claude/rules/common
+> cp -r everything-claude-code/rules/typescript ~/.claude/rules/typescript   # escolha sua stack
 >
 > # Opção B: Regras no nível do projeto (aplica apenas ao projeto atual)
 > mkdir -p .claude/rules
-> cp -r everything-claude-code/rules/common/* .claude/rules/
+> cp -r everything-claude-code/rules/common .claude/rules/common
 > ```
 
 ---
@@ -362,8 +362,8 @@ git clone https://github.com/affaan-m/everything-claude-code.git
 cp everything-claude-code/agents/*.md ~/.claude/agents/
 
 # Copiar regras (comuns + específicas da linguagem)
-cp -r everything-claude-code/rules/common/* ~/.claude/rules/
-cp -r everything-claude-code/rules/typescript/* ~/.claude/rules/
+cp -r everything-claude-code/rules/common ~/.claude/rules/common
+cp -r everything-claude-code/rules/typescript ~/.claude/rules/typescript
 
 # Copiar comandos
 cp everything-claude-code/commands/*.md ~/.claude/commands/

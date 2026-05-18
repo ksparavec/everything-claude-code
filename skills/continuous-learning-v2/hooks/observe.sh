@@ -12,8 +12,20 @@
 
 set -e
 
-# Hook phase from CLI argument: "pre" (PreToolUse) or "post" (PostToolUse)
-HOOK_PHASE="${1:-post}"
+# Hook phase from CLI argument: "pre" (PreToolUse) or "post" (PostToolUse).
+# Manual settings.json installs can call this script without the plugin
+# wrapper's positional phase argument, but Claude Code still exposes the hook
+# event name in CLAUDE_HOOK_EVENT_NAME.  Fall back to that env var before
+# defaulting to post so manually registered PreToolUse hooks are recorded as
+# tool_start instead of being silently misclassified as tool_complete.
+HOOK_PHASE="${1:-}"
+if [ -z "$HOOK_PHASE" ]; then
+  case "${CLAUDE_HOOK_EVENT_NAME:-}" in
+    PreToolUse|pretooluse|pre_tool_use|pre) HOOK_PHASE="pre" ;;
+    PostToolUse|posttooluse|post_tool_use|post) HOOK_PHASE="post" ;;
+    *) HOOK_PHASE="post" ;;
+  esac
+fi
 
 # ─────────────────────────────────────────────
 # Read stdin first (before project detection)
@@ -27,18 +39,45 @@ if [ -z "$INPUT_JSON" ]; then
   exit 0
 fi
 
+_is_windows_app_installer_stub() {
+  # Windows 10/11 ships an "App Execution Alias" stub at
+  #   %LOCALAPPDATA%\Microsoft\WindowsApps\python.exe
+  #   %LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe
+  # Both are symlinks to AppInstallerPythonRedirector.exe which, when Python
+  # is not installed from the Store, neither launches Python nor honors "-c".
+  # Calls to it hang or print a bare "Python " line, silently breaking every
+  # JSON-parsing step in this hook. Detect and skip such stubs here.
+  local _candidate="$1"
+  [ -z "$_candidate" ] && return 1
+  local _resolved
+  _resolved="$(command -v "$_candidate" 2>/dev/null || true)"
+  [ -z "$_resolved" ] && return 1
+  case "$_resolved" in
+    *AppInstallerPythonRedirector.exe|*AppInstallerPythonRedirector.EXE) return 0 ;;
+  esac
+  # Also resolve one level of symlink on POSIX-like shells (Git Bash, WSL).
+  if command -v readlink >/dev/null 2>&1; then
+    local _target
+    _target="$(readlink -f "$_resolved" 2>/dev/null || readlink "$_resolved" 2>/dev/null || true)"
+    case "$_target" in
+      *AppInstallerPythonRedirector.exe|*AppInstallerPythonRedirector.EXE) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
 resolve_python_cmd() {
   if [ -n "${CLV2_PYTHON_CMD:-}" ] && command -v "$CLV2_PYTHON_CMD" >/dev/null 2>&1; then
     printf '%s\n' "$CLV2_PYTHON_CMD"
     return 0
   fi
 
-  if command -v python3 >/dev/null 2>&1; then
+  if command -v python3 >/dev/null 2>&1 && ! _is_windows_app_installer_stub python3; then
     printf '%s\n' python3
     return 0
   fi
 
-  if command -v python >/dev/null 2>&1; then
+  if command -v python >/dev/null 2>&1 && ! _is_windows_app_installer_stub python; then
     printf '%s\n' python
     return 0
   fi
@@ -51,6 +90,11 @@ if [ -z "$PYTHON_CMD" ]; then
   echo "[observe] No python interpreter found, skipping observation" >&2
   exit 0
 fi
+
+# Propagate our stub-aware selection so detect-project.sh (which is sourced
+# below) does not re-resolve and silently fall back to the App Installer stub.
+# detect-project.sh honors an already-set CLV2_PYTHON_CMD.
+export CLV2_PYTHON_CMD="${CLV2_PYTHON_CMD:-$PYTHON_CMD}"
 
 # ─────────────────────────────────────────────
 # Extract cwd from stdin for project detection
@@ -83,7 +127,9 @@ fi
 # Sourcing detect-project.sh creates project-scoped directories and updates
 # projects.json, so automated sessions must return before that point.
 
-CONFIG_DIR="${HOME}/.claude/homunculus"
+# shellcheck disable=SC1091
+. "$(dirname "$0")/../scripts/lib/homunculus-dir.sh"
+CONFIG_DIR="$(_ecc_resolve_homunculus_dir)"
 
 # Skip if disabled (check both default and CLV2_CONFIG-derived locations)
 if [ -f "$CONFIG_DIR/disabled" ]; then
@@ -103,7 +149,7 @@ fi
 # Non-interactive SDK automation is still filtered by Layers 2-5 below
 # (ECC_HOOK_PROFILE=minimal, ECC_SKIP_OBSERVE=1, agent_id, path exclusions).
 case "${CLAUDE_CODE_ENTRYPOINT:-cli}" in
-  cli|sdk-ts) ;;
+  cli|sdk-ts|claude-desktop) ;;
   *) exit 0 ;;
 esac
 
@@ -287,6 +333,19 @@ print(json.dumps(observation))
 # Use flock for atomic check-then-act to prevent race conditions
 # Fallback for macOS (no flock): use lockfile or skip
 LAZY_START_LOCK="${PROJECT_DIR}/.observer-start.lock"
+_REMOVE_FILE_IF_PRESENT() {
+  local target="$1"
+  if [ -n "$target" ] && [ -e "$target" ]; then
+    rm -- "$target" 2>/dev/null || true
+  fi
+}
+
+_START_OBSERVER_LOGGED() {
+  local bootstrap_log="${PROJECT_DIR}/observer-start.log"
+  mkdir -p "$PROJECT_DIR"
+  "${SKILL_ROOT}/agents/start-observer.sh" start >> "$bootstrap_log" 2>&1 || true
+}
+
 _CHECK_OBSERVER_RUNNING() {
   local pid_file="$1"
   if [ -f "$pid_file" ]; then
@@ -295,7 +354,7 @@ _CHECK_OBSERVER_RUNNING() {
     # Validate PID is a positive integer (>1) to prevent signaling invalid targets
     case "$pid" in
       ''|*[!0-9]*|0|1)
-        rm -f "$pid_file" 2>/dev/null || true
+        _REMOVE_FILE_IF_PRESENT "$pid_file"
         return 1
         ;;
     esac
@@ -303,7 +362,7 @@ _CHECK_OBSERVER_RUNNING() {
       return 0  # Process is alive
     fi
     # Stale PID file - remove it
-    rm -f "$pid_file" 2>/dev/null || true
+    _REMOVE_FILE_IF_PRESENT "$pid_file"
   fi
   return 1  # No PID file or process dead
 }
@@ -312,10 +371,12 @@ if [ -f "${CONFIG_DIR}/disabled" ]; then
   OBSERVER_ENABLED=false
 else
   OBSERVER_ENABLED=false
-  CONFIG_FILE="${SKILL_ROOT}/config.json"
-  # Allow CLV2_CONFIG override
   if [ -n "${CLV2_CONFIG:-}" ]; then
     CONFIG_FILE="$CLV2_CONFIG"
+  elif [ -f "${CONFIG_DIR}/config.json" ]; then
+    CONFIG_FILE="${CONFIG_DIR}/config.json"
+  else
+    CONFIG_FILE="${SKILL_ROOT}/config.json"
   fi
   # Use effective config path for both existence check and reading
   EFFECTIVE_CONFIG="$CONFIG_FILE"
@@ -348,7 +409,7 @@ if [ "$OBSERVER_ENABLED" = "true" ]; then
         _CHECK_OBSERVER_RUNNING "${PROJECT_DIR}/.observer.pid" || true
         _CHECK_OBSERVER_RUNNING "${CONFIG_DIR}/.observer.pid" || true
         if [ ! -f "${PROJECT_DIR}/.observer.pid" ] && [ ! -f "${CONFIG_DIR}/.observer.pid" ]; then
-          nohup "${SKILL_ROOT}/agents/start-observer.sh" start >/dev/null 2>&1 &
+          _START_OBSERVER_LOGGED
         fi
       ) 9>"$LAZY_START_LOCK"
     else
@@ -356,14 +417,14 @@ if [ "$OBSERVER_ENABLED" = "true" ]; then
       if command -v lockfile >/dev/null 2>&1; then
         # Use subshell to isolate exit and add trap for cleanup
         (
-          trap 'rm -f "$LAZY_START_LOCK" 2>/dev/null || true' EXIT
+          trap '_REMOVE_FILE_IF_PRESENT "$LAZY_START_LOCK"' EXIT
           lockfile -r 1 -l 30 "$LAZY_START_LOCK" 2>/dev/null || exit 0
           _CHECK_OBSERVER_RUNNING "${PROJECT_DIR}/.observer.pid" || true
           _CHECK_OBSERVER_RUNNING "${CONFIG_DIR}/.observer.pid" || true
           if [ ! -f "${PROJECT_DIR}/.observer.pid" ] && [ ! -f "${CONFIG_DIR}/.observer.pid" ]; then
-            nohup "${SKILL_ROOT}/agents/start-observer.sh" start >/dev/null 2>&1 &
+            _START_OBSERVER_LOGGED
           fi
-          rm -f "$LAZY_START_LOCK" 2>/dev/null || true
+          _REMOVE_FILE_IF_PRESENT "$LAZY_START_LOCK"
         )
       else
         # POSIX fallback: mkdir is atomic -- fails if dir already exists
@@ -373,7 +434,7 @@ if [ "$OBSERVER_ENABLED" = "true" ]; then
           _CHECK_OBSERVER_RUNNING "${PROJECT_DIR}/.observer.pid" || true
           _CHECK_OBSERVER_RUNNING "${CONFIG_DIR}/.observer.pid" || true
           if [ ! -f "${PROJECT_DIR}/.observer.pid" ] && [ ! -f "${CONFIG_DIR}/.observer.pid" ]; then
-            nohup "${SKILL_ROOT}/agents/start-observer.sh" start >/dev/null 2>&1 &
+            _START_OBSERVER_LOGGED
           fi
         )
       fi
@@ -411,7 +472,10 @@ if [ "$should_signal" -eq 1 ]; then
       observer_pid=$(cat "$pid_file" 2>/dev/null || true)
       # Validate PID is a positive integer (>1)
       case "$observer_pid" in
-        ''|*[!0-9]*|0|1) rm -f "$pid_file" 2>/dev/null || true; continue ;;
+        ''|*[!0-9]*|0|1)
+          _REMOVE_FILE_IF_PRESENT "$pid_file"
+          continue
+          ;;
       esac
       # Deduplicate: skip if already signaled this pass
       case "$signaled_pids" in

@@ -1,4 +1,4 @@
-**언어:** [English](../../README.md) | [Português (Brasil)](../pt-BR/README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | 한국어 | [Türkçe](../tr/README.md)
+**언어:** [English](../../README.md) | [Português (Brasil)](../pt-BR/README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | 한국어 | [Türkçe](../tr/README.md) | [Русский](../ru/README.md) | [Tiếng Việt](../vi-VN/README.md) | [ไทย](../th/README.md)
 
 # Everything Claude Code
 
@@ -22,9 +22,9 @@
 
 <div align="center">
 
-**Language / 语言 / 語言 / 언어 / Dil**
+**Language / 语言 / 語言 / 언어 / Dil / Язык / Ngôn ngữ**
 
-[**English**](../../README.md) | [Português (Brasil)](../pt-BR/README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | [한국어](README.md) | [Türkçe](../tr/README.md)
+[**English**](../../README.md) | [Português (Brasil)](../pt-BR/README.md) | [简体中文](../../README.zh-CN.md) | [繁體中文](../zh-TW/README.md) | [日本語](../ja-JP/README.md) | [한국어](README.md) | [Türkçe](../tr/README.md) | [Русский](../ru/README.md) | [Tiếng Việt](../vi-VN/README.md) | [ไทย](../th/README.md)
 
 </div>
 
@@ -387,12 +387,12 @@ Claude Code v2.1+는 설치된 플러그인의 `hooks/hooks.json`을 **자동으
 >
 > # 옵션 A: 사용자 레벨 룰 (모든 프로젝트에 적용)
 > mkdir -p ~/.claude/rules
-> cp -r everything-claude-code/rules/common/* ~/.claude/rules/
-> cp -r everything-claude-code/rules/typescript/* ~/.claude/rules/   # 사용하는 스택 선택
+> cp -r everything-claude-code/rules/common ~/.claude/rules/common
+> cp -r everything-claude-code/rules/typescript ~/.claude/rules/typescript   # 사용하는 스택 선택
 >
 > # 옵션 B: 프로젝트 레벨 룰 (현재 프로젝트에만 적용)
 > mkdir -p .claude/rules
-> cp -r everything-claude-code/rules/common/* .claude/rules/
+> cp -r everything-claude-code/rules/common .claude/rules/common
 > ```
 
 ---
@@ -409,8 +409,8 @@ git clone https://github.com/affaan-m/everything-claude-code.git
 cp everything-claude-code/agents/*.md ~/.claude/agents/
 
 # 룰 복사 (common + 언어별)
-cp -r everything-claude-code/rules/common/* ~/.claude/rules/
-cp -r everything-claude-code/rules/typescript/* ~/.claude/rules/   # 사용하는 스택 선택
+cp -r everything-claude-code/rules/common ~/.claude/rules/common
+cp -r everything-claude-code/rules/typescript ~/.claude/rules/typescript   # 사용하는 스택 선택
 
 # 커맨드 복사
 cp everything-claude-code/commands/*.md ~/.claude/commands/
@@ -573,7 +573,7 @@ MCP 서버가 너무 많으면 컨텍스트를 잡아먹습니다. 각 MCP 도�
 cp everything-claude-code/agents/*.md ~/.claude/agents/
 
 # 룰만
-cp -r everything-claude-code/rules/common/* ~/.claude/rules/
+cp -r everything-claude-code/rules/common ~/.claude/rules/common
 ```
 
 각 컴포넌트는 완전히 독립적입니다.
