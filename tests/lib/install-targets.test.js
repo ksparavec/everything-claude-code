@@ -3,6 +3,8 @@
  */
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const {
@@ -37,6 +39,7 @@ function runTests() {
     const adapters = listInstallTargetAdapters();
     const targets = adapters.map(adapter => adapter.target);
     assert.ok(targets.includes('claude'), 'Should include claude target');
+    assert.ok(targets.includes('claude-project'), 'Should include claude-project target');
     assert.ok(targets.includes('cursor'), 'Should include cursor target');
     assert.ok(targets.includes('antigravity'), 'Should include antigravity target');
     assert.ok(targets.includes('codex'), 'Should include codex target');
@@ -862,6 +865,232 @@ function runTests() {
         `Adapter target "${adapter.target}" is not in SUPPORTED_INSTALL_TARGETS. ` +
         `Supported: ${SUPPORTED_INSTALL_TARGETS.join(', ')}`
       );
+    }
+  })) passed++; else failed++;
+
+  if (test('resolves claude-project adapter root and install-state path from project root', () => {
+    const adapter = getInstallTargetAdapter('claude-project');
+    const projectRoot = '/workspace/app';
+    const root = adapter.resolveRoot({ projectRoot });
+    const statePath = adapter.getInstallStatePath({ projectRoot });
+
+    assert.strictEqual(adapter.id, 'claude-project');
+    assert.strictEqual(adapter.target, 'claude-project');
+    assert.strictEqual(adapter.kind, 'project');
+    assert.strictEqual(root, path.join(projectRoot, '.claude'));
+    assert.strictEqual(statePath, path.join(projectRoot, '.claude', 'ecc', 'install-state.json'));
+  })) passed++; else failed++;
+
+  if (test('claude-project adapter supports lookup by target and adapter id', () => {
+    const byTarget = getInstallTargetAdapter('claude-project');
+    const byId = getInstallTargetAdapter('claude-project');
+
+    assert.strictEqual(byTarget.id, 'claude-project');
+    assert.strictEqual(byId.id, 'claude-project');
+    assert.ok(byTarget.supports('claude-project'));
+  })) passed++; else failed++;
+
+  if (test('plans claude-project rules and skills under project-scope ECC-managed subdirectories', () => {
+    const repoRoot = path.join(__dirname, '..', '..');
+    const projectRoot = '/workspace/app';
+
+    const plan = planInstallTargetScaffold({
+      target: 'claude-project',
+      repoRoot,
+      projectRoot,
+      modules: [
+        {
+          id: 'rules-core',
+          paths: ['rules'],
+        },
+        {
+          id: 'workflow-quality',
+          paths: ['skills/tdd-workflow'],
+        },
+      ],
+    });
+
+    assert.strictEqual(plan.adapter.id, 'claude-project');
+    assert.strictEqual(plan.targetRoot, path.join(projectRoot, '.claude'));
+    assert.strictEqual(plan.installStatePath, path.join(projectRoot, '.claude', 'ecc', 'install-state.json'));
+    assert.ok(
+      plan.operations.some(operation => (
+        normalizedRelativePath(operation.sourceRelativePath) === 'rules'
+        && operation.destinationPath === path.join(projectRoot, '.claude', 'rules', 'ecc')
+      )),
+      'Should install bundled rules under project-scope rules/ecc'
+    );
+    assert.ok(
+      plan.operations.some(operation => (
+        normalizedRelativePath(operation.sourceRelativePath) === 'skills/tdd-workflow'
+        && operation.destinationPath === path.join(projectRoot, '.claude', 'skills', 'ecc', 'tdd-workflow')
+      )),
+      'Should install bundled skills under project-scope skills/ecc'
+    );
+  })) passed++; else failed++;
+
+  if (test('claude-project skips foreign platform source paths', () => {
+    const repoRoot = path.join(__dirname, '..', '..');
+    const projectRoot = '/workspace/app';
+
+    const plan = planInstallTargetScaffold({
+      target: 'claude-project',
+      repoRoot,
+      projectRoot,
+      modules: [
+        {
+          id: 'platform-configs',
+          paths: ['.cursor', '.zed', 'rules'],
+        },
+      ],
+    });
+
+    assert.ok(
+      plan.operations.some(operation => (
+        normalizedRelativePath(operation.sourceRelativePath) === 'rules'
+        && operation.destinationPath === path.join(projectRoot, '.claude', 'rules', 'ecc')
+      )),
+      'Should still include non-foreign rules path (guards against empty-plan regression)'
+    );
+    assert.ok(
+      !plan.operations.some(operation => (
+        normalizedRelativePath(operation.sourceRelativePath) === '.cursor'
+        || normalizedRelativePath(operation.sourceRelativePath).startsWith('.cursor/')
+      )),
+      'Should skip foreign Cursor platform paths'
+    );
+    assert.ok(
+      !plan.operations.some(operation => (
+        normalizedRelativePath(operation.sourceRelativePath) === '.zed'
+        || normalizedRelativePath(operation.sourceRelativePath).startsWith('.zed/')
+      )),
+      'Should skip foreign Zed platform paths'
+    );
+  })) passed++; else failed++;
+
+  if (test('resolves opencode adapter root and install-state path from home dir', () => {
+    const adapter = getInstallTargetAdapter('opencode');
+    const homeDir = '/Users/example';
+    const root = adapter.resolveRoot({ homeDir });
+    const statePath = adapter.getInstallStatePath({ homeDir });
+
+    assert.strictEqual(adapter.id, 'opencode-home');
+    assert.strictEqual(adapter.target, 'opencode');
+    assert.strictEqual(adapter.kind, 'home');
+    assert.strictEqual(root, path.join(homeDir, '.opencode'));
+    assert.strictEqual(statePath, path.join(homeDir, '.opencode', 'ecc-install-state.json'));
+  })) passed++; else failed++;
+
+  if (test('opencode adapter validate reports an error when compiled plugin is missing', () => {
+    const adapter = getInstallTargetAdapter('opencode');
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'install-targets-opencode-missing-'));
+    try {
+      const issues = adapter.validate({ homeDir: '/Users/example', repoRoot });
+      assert.strictEqual(issues.length, 1, 'Should surface exactly one validation issue');
+      assert.strictEqual(issues[0].severity, 'error');
+      assert.strictEqual(issues[0].code, 'opencode-plugin-not-built');
+      assert.ok(
+        issues[0].message.includes('.opencode/dist') || issues[0].message.includes('.opencode\\dist'),
+        'Validation message should reference the .opencode/dist payload location'
+      );
+      assert.ok(
+        issues[0].message.includes('build-opencode.js') || issues[0].message.includes('build:opencode'),
+        'Validation message should hint at the build command'
+      );
+      assert.ok(Array.isArray(issues[0].missingRelativePaths) && issues[0].missingRelativePaths.length >= 1,
+        'Validation issue should expose the list of missing artefacts as metadata');
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  })) passed++; else failed++;
+
+  if (test('opencode adapter validate reports a partial build (entry present, runtime dirs absent)', () => {
+    const adapter = getInstallTargetAdapter('opencode');
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'install-targets-opencode-partial-'));
+    try {
+      const distDir = path.join(repoRoot, '.opencode', 'dist');
+      fs.mkdirSync(distDir, { recursive: true });
+      fs.writeFileSync(path.join(distDir, 'index.js'), '// stub\n');
+      // Intentionally omit dist/plugins and dist/tools.
+
+      const issues = adapter.validate({ homeDir: '/Users/example', repoRoot });
+      assert.strictEqual(issues.length, 1, 'Should surface a single validation issue for partial builds');
+      assert.strictEqual(issues[0].code, 'opencode-plugin-not-built');
+      const missing = issues[0].missingRelativePaths.map(p => p.replace(/\\/g, '/'));
+      assert.ok(missing.includes('.opencode/dist/plugins'), 'Missing list should include dist/plugins');
+      assert.ok(missing.includes('.opencode/dist/tools'), 'Missing list should include dist/tools');
+      assert.ok(!missing.includes('.opencode/dist/index.js'), 'Missing list should not include the present entry');
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  })) passed++; else failed++;
+
+  if (test('opencode adapter validate rejects wrong artefact type (file where directory expected)', () => {
+    const adapter = getInstallTargetAdapter('opencode');
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'install-targets-opencode-wrongtype-'));
+    try {
+      const distDir = path.join(repoRoot, '.opencode', 'dist');
+      fs.mkdirSync(distDir, { recursive: true });
+      fs.writeFileSync(path.join(distDir, 'index.js'), '// stub\n');
+      // Materialize plugins/tools as files instead of directories.
+      fs.writeFileSync(path.join(distDir, 'plugins'), 'not-a-dir');
+      fs.writeFileSync(path.join(distDir, 'tools'), 'not-a-dir');
+
+      const issues = adapter.validate({ homeDir: '/Users/example', repoRoot });
+      assert.strictEqual(issues.length, 1, 'Wrong-type artefacts should still surface a validation issue');
+      assert.strictEqual(issues[0].code, 'opencode-plugin-not-built');
+      const missing = issues[0].missingRelativePaths.map(p => p.replace(/\\/g, '/'));
+      assert.ok(missing.includes('.opencode/dist/plugins'), 'Should flag plugins file as wrong type');
+      assert.ok(missing.includes('.opencode/dist/tools'), 'Should flag tools file as wrong type');
+      assert.ok(!missing.includes('.opencode/dist/index.js'), 'Should not flag index.js when it is correctly a file');
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  })) passed++; else failed++;
+
+  if (test('opencode adapter validate handles ENOTDIR (intermediate path is a file) without throwing', () => {
+    const adapter = getInstallTargetAdapter('opencode');
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'install-targets-opencode-enotdir-'));
+    try {
+      // Create `.opencode/dist` as a regular file. Stat'ing
+      // `.opencode/dist/index.js` then throws ENOTDIR (intermediate component
+      // is a file, not a directory). The validate gate must treat this as a
+      // missing artefact and surface the structured opencode-plugin-not-built
+      // issue, not propagate the raw fs error.
+      const opencodeDir = path.join(repoRoot, '.opencode');
+      fs.mkdirSync(opencodeDir, { recursive: true });
+      fs.writeFileSync(path.join(opencodeDir, 'dist'), 'not-a-dir');
+
+      let issues;
+      assert.doesNotThrow(
+        () => { issues = adapter.validate({ homeDir: '/Users/example', repoRoot }); },
+        'validate should swallow ENOTDIR and surface a structured issue'
+      );
+      assert.strictEqual(issues.length, 1, 'ENOTDIR case should produce exactly one validation issue');
+      assert.strictEqual(issues[0].severity, 'error');
+      assert.strictEqual(issues[0].code, 'opencode-plugin-not-built');
+      const missing = issues[0].missingRelativePaths.map(p => p.replace(/\\/g, '/'));
+      assert.ok(missing.includes('.opencode/dist/index.js'), 'ENOTDIR target should be reported as missing');
+      assert.ok(missing.includes('.opencode/dist/plugins'), 'Sibling artefacts under the bad path should be reported');
+      assert.ok(missing.includes('.opencode/dist/tools'), 'Sibling artefacts under the bad path should be reported');
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
+  })) passed++; else failed++;
+
+  if (test('opencode adapter validate passes once compiled plugin payload exists', () => {
+    const adapter = getInstallTargetAdapter('opencode');
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'install-targets-opencode-built-'));
+    try {
+      const distDir = path.join(repoRoot, '.opencode', 'dist');
+      fs.mkdirSync(path.join(distDir, 'plugins'), { recursive: true });
+      fs.mkdirSync(path.join(distDir, 'tools'), { recursive: true });
+      fs.writeFileSync(path.join(distDir, 'index.js'), '// stub\n');
+
+      const issues = adapter.validate({ homeDir: '/Users/example', repoRoot });
+      assert.deepStrictEqual(issues, [], 'Should not surface validation issues when plugin is built');
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
     }
   })) passed++; else failed++;
 

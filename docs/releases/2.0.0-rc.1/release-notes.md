@@ -16,6 +16,13 @@ Claude Code remains a core target. Codex, OpenCode, Cursor, Gemini, and other ha
 - Added Zed as a project-local planning/install target while keeping BYOK and OpenRouter secrets outside ECC-managed project files.
 - Added command-registry coverage, platform audit, discussion audit, operator dashboard, Linear progress readiness, and preview-pack smoke gates.
 - Added a local [observability readiness gate](../../architecture/observability-readiness.md) for loop status, session traces, harness audit, and ECC2 tool-risk logs.
+- Added the public teaser [Itô prediction-market skill pack](ito-prediction-market-skill-pack.md)
+  for read-only basket research, comparison, oracle-style market intelligence,
+  and risk review. Live Itô API access remains gated and separate from ECC
+  Tools billing.
+- Added the rollout-derived optimization skill pack: parallel execution,
+  benchmark loops, data-throughput acceleration, latency-critical systems, and
+  recursive decision ledgers.
 - Refreshed the release-readiness evidence after the May 2026 Mini
   Shai-Hulud/TanStack campaign follow-up, including full-campaign AgentShield
   IOC coverage, queue-zero/discussion checks, a detailed Linear roadmap gate,
@@ -46,8 +53,10 @@ feature branch:
 - documentation expansion, Japanese localization, zh-CN to ja-JP parity
   repair, and dependency readiness through TypeScript 6 and Node type updates;
 - launch collateral for GitHub release copy, X, LinkedIn, article outline,
-  Telegram/Hermes handoff, demo prompts, and the approval-gated launch
-  checklist.
+  Telegram/Hermes handoff, demo prompts, partner/sponsor/talk outreach, and
+  the approval-gated launch checklist.
+- gated Itô skill distribution as a public workflow teaser, not a live trading
+  claim or a merge of ECC Tools and Itô ownership.
 - a release URL ledger that separates links which already resolve from links
   that must wait for the GitHub release, npm rc package, plugin tag/directory,
   and ECC Tools billing readback.
@@ -91,7 +100,7 @@ What stays local:
 2. Read the [Hermes setup guide](../../HERMES-SETUP.md).
 3. Review the [cross-harness architecture](../../architecture/cross-harness.md).
 4. Run the [observability readiness gate](../../architecture/observability-readiness.md).
-5. Check the [release URL ledger](release-url-ledger-2026-05-18.md) before
+5. Check the [release URL ledger](release-url-ledger-2026-05-19.md) before
    using any announcement links.
 6. Start with one workflow lane: engineering, research, content, or outreach.
 7. Import only sanitized operator patterns into ECC skills.

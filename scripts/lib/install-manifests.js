@@ -4,7 +4,7 @@ const path = require('path');
 const { getInstallTargetAdapter, planInstallTargetScaffold } = require('./install-targets/registry');
 
 const DEFAULT_REPO_ROOT = path.join(__dirname, '../..');
-const SUPPORTED_INSTALL_TARGETS = ['claude', 'cursor', 'antigravity', 'codex', 'gemini', 'opencode', 'codebuddy', 'joycode', 'qwen', 'zed'];
+const SUPPORTED_INSTALL_TARGETS = ['claude', 'claude-project', 'cursor', 'antigravity', 'codex', 'gemini', 'opencode', 'codebuddy', 'joycode', 'qwen', 'zed'];
 const COMPONENT_FAMILY_PREFIXES = {
   baseline: 'baseline:',
   language: 'lang:',
@@ -14,7 +14,7 @@ const COMPONENT_FAMILY_PREFIXES = {
   skill: 'skill:',
   locale: 'locale:',
 };
-const SUPPORTED_LOCALES = Object.freeze(['ja', 'zh-CN', 'ko-KR', 'pt-BR', 'ru', 'tr', 'vi-VN', 'zh-TW']);
+const SUPPORTED_LOCALES = Object.freeze(['ja', 'zh-CN', 'ko-KR', 'pt-BR', 'ru', 'tr', 'vi-VN', 'zh-TW', 'de-DE']);
 const LOCALE_ALIAS_TO_COMPONENT_ID = Object.freeze({
   'ja': 'locale:ja',
   'ja-JP': 'locale:ja',
@@ -29,6 +29,8 @@ const LOCALE_ALIAS_TO_COMPONENT_ID = Object.freeze({
   'vi-VN': 'locale:vi-vn',
   'vi': 'locale:vi-vn',
   'zh-TW': 'locale:zh-tw',
+  'de-DE': 'locale:de-de',
+  'de': 'locale:de-de',
 });
 
 function listSupportedLocales() {
@@ -36,6 +38,14 @@ function listSupportedLocales() {
 }
 const LEGACY_COMPAT_BASE_MODULE_IDS_BY_TARGET = Object.freeze({
   claude: [
+    'rules-core',
+    'agents-core',
+    'commands-core',
+    'hooks-runtime',
+    'platform-configs',
+    'workflow-quality',
+  ],
+  'claude-project': [
     'rules-core',
     'agents-core',
     'commands-core',
