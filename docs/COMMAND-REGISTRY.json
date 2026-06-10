@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "totalCommands": 76,
+  "totalCommands": 84,
   "commands": [
     {
       "command": "aside",
@@ -491,6 +491,67 @@
       "path": "commands/multi-workflow.md"
     },
     {
+      "command": "orch-add-feature",
+      "description": "Orchestrate building a brand-new feature end to end — research, plan, TDD, review, gated commit. Wrapper that kicks off the orch-add-feature skill.",
+      "type": "orchestration",
+      "primaryAgents": [],
+      "allAgents": [],
+      "skills": [
+        "orch-add-feature"
+      ],
+      "path": "commands/orch-add-feature.md"
+    },
+    {
+      "command": "orch-build-mvp",
+      "description": "Orchestrate bootstrapping a working MVP from a design/spec doc — ingest, slice, scaffold, TDD, review, gated commit (reuses the GAN harness). Wrapper for the orch-build-mvp skill.",
+      "type": "orchestration",
+      "primaryAgents": [],
+      "allAgents": [],
+      "skills": [
+        "orch-build-mvp"
+      ],
+      "path": "commands/orch-build-mvp.md"
+    },
+    {
+      "command": "orch-change-feature",
+      "description": "Orchestrate altering an existing, working feature to new desired behavior — update tests to the new spec, change impl, review, gated commit. Wrapper for the orch-change-feature skill.",
+      "type": "orchestration",
+      "primaryAgents": [],
+      "allAgents": [],
+      "skills": [
+        "orch-add-feature",
+        "orch-change-feature",
+        "orch-fix-defect"
+      ],
+      "path": "commands/orch-change-feature.md"
+    },
+    {
+      "command": "orch-fix-defect",
+      "description": "Orchestrate fixing a bug — reproduce it as a failing regression test, fix to green, review, gated commit. Wrapper for the orch-fix-defect skill.",
+      "type": "orchestration",
+      "primaryAgents": [],
+      "allAgents": [],
+      "skills": [
+        "orch-add-feature",
+        "orch-change-feature",
+        "orch-fix-defect"
+      ],
+      "path": "commands/orch-fix-defect.md"
+    },
+    {
+      "command": "orch-refine-code",
+      "description": "Orchestrate a behavior-preserving refactor — confirm tests green, restructure without changing behavior, keep green, review, gated commit. Wrapper for the orch-refine-code skill.",
+      "type": "orchestration",
+      "primaryAgents": [],
+      "allAgents": [],
+      "skills": [
+        "orch-change-feature",
+        "orch-fix-defect",
+        "orch-refine-code"
+      ],
+      "path": "commands/orch-refine-code.md"
+    },
+    {
       "command": "plan-prd",
       "description": "Generate a lean, problem-first PRD and hand off to /plan for implementation planning.",
       "type": "testing",
@@ -637,12 +698,61 @@
     },
     {
       "command": "quality-gate",
-      "description": "Run the ECC quality pipeline for a file or project scope and report remediation steps.",
-      "type": "general",
+      "description": "Run the ECC formatter quality gate for a single file and report remediation steps.",
+      "type": "testing",
       "primaryAgents": [],
       "allAgents": [],
       "skills": [],
       "path": "commands/quality-gate.md"
+    },
+    {
+      "command": "react-build",
+      "description": "Fix React build failures (Vite, webpack, Next.js, CRA, Parcel, esbuild, Bun) incrementally — JSX/TSX compile errors, hydration mismatches, server/client component boundary failures, missing types. Invokes the react-build-resolver agent for minimal, surgical fixes.",
+      "type": "testing",
+      "primaryAgents": [
+        "react-build-resolver"
+      ],
+      "allAgents": [
+        "react-build-resolver"
+      ],
+      "skills": [
+        "frontend-patterns",
+        "react-patterns"
+      ],
+      "path": "commands/react-build.md"
+    },
+    {
+      "command": "react-review",
+      "description": "Comprehensive React/JSX code review for hook correctness, render performance, server/client component boundaries, accessibility, and React-specific security. Invokes the react-reviewer agent (and typescript-reviewer alongside on TSX/JSX changes).",
+      "type": "testing",
+      "primaryAgents": [
+        "react-reviewer",
+        "typescript-reviewer"
+      ],
+      "allAgents": [
+        "react-reviewer",
+        "typescript-reviewer"
+      ],
+      "skills": [
+        "accessibility",
+        "react-patterns",
+        "react-testing"
+      ],
+      "path": "commands/react-review.md"
+    },
+    {
+      "command": "react-test",
+      "description": "Enforce TDD workflow for React. Write React Testing Library tests first (behavior-focused, accessibility-first), then implement components. Detects Vitest or Jest and verifies coverage targets.",
+      "type": "testing",
+      "primaryAgents": [],
+      "allAgents": [],
+      "skills": [
+        "accessibility",
+        "e2e-testing",
+        "react-testing",
+        "tdd-workflow"
+      ],
+      "path": "commands/react-test.md"
     },
     {
       "command": "refactor-clean",
@@ -814,12 +924,12 @@
   "statistics": {
     "byType": {
       "build": 2,
-      "general": 8,
-      "orchestration": 6,
+      "general": 7,
+      "orchestration": 11,
       "planning": 2,
       "refactoring": 1,
       "review": 9,
-      "testing": 48
+      "testing": 52
     },
     "topAgents": [
       {
@@ -869,15 +979,31 @@
         "count": 6
       },
       {
+        "skill": "tdd-workflow",
+        "count": 4
+      },
+      {
+        "skill": "accessibility",
+        "count": 3
+      },
+      {
         "skill": "flutter-dart-code-review",
         "count": 3
       },
       {
-        "skill": "rust-patterns",
+        "skill": "orch-add-feature",
         "count": 3
       },
       {
-        "skill": "tdd-workflow",
+        "skill": "orch-change-feature",
+        "count": 3
+      },
+      {
+        "skill": "orch-fix-defect",
+        "count": 3
+      },
+      {
+        "skill": "rust-patterns",
         "count": 3
       },
       {
@@ -886,22 +1012,6 @@
       },
       {
         "skill": "cpp-testing",
-        "count": 2
-      },
-      {
-        "skill": "ecc-guide",
-        "count": 2
-      },
-      {
-        "skill": "golang-patterns",
-        "count": 2
-      },
-      {
-        "skill": "golang-testing",
-        "count": 2
-      },
-      {
-        "skill": "kotlin-patterns",
         "count": 2
       }
     ]
