@@ -108,6 +108,7 @@ skills:
   - perl-security
   - perl-testing
   - plankton-code-quality
+  - plan-canvas
   - plan-orchestrate
   - postgres-patterns
   - product-lens
@@ -166,6 +167,13 @@ commands:
   - cpp-review
   - cpp-test
   - ecc-guide
+  - epic-claim
+  - epic-decompose
+  - epic-publish
+  - epic-review
+  - epic-sync
+  - epic-unblock
+  - epic-validate
   - evolve
   - fastapi-review
   - feature-dev
@@ -206,7 +214,9 @@ commands:
   - orch-change-feature
   - orch-fix-defect
   - orch-refine-code
+  - orch-review
   - plan
+  - plan-canvas
   - plan-prd
   - pm2
   - projects
@@ -240,6 +250,7 @@ commands:
   - test-coverage
   - update-codemaps
   - update-docs
+  - vue-review
 tags:
   - agent-harness
   - developer-tools

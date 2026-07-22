@@ -6,14 +6,18 @@ Thank you to everyone funding ECC's open-source work. Your sponsorship is what l
 
 *Become a [Strategic sponsor](https://github.com/sponsors/affaan-m) to be featured here.*
 
-## Business Sponsors — $500/mo
+## Business Sponsors
 
 | Sponsor | Logo | Since |
 |---------|------|-------|
 | [**CodeRabbit**](https://www.coderabbit.ai) | <img src="assets/images/sponsors/coderabbit.png" width="60" alt="CodeRabbit logo" /> | 2026 |
 | [**Greptile**](https://www.greptile.com/go/ecc) | <img src="assets/images/sponsors/greptile.png" width="60" alt="Greptile logo" /> | 2026 |
+| [**Atlas Cloud**](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=ECC) | <img src="assets/images/sponsors/atlascloud.png" width="60" alt="Atlas Cloud logo" /> | 2026 |
+| [**Itô**](https://compute.itomarkets.com) | <img src="assets/images/sponsors/ito.svg" width="60" alt="Itô Markets logo" /> | 2026 |
 
-*[Become a Business sponsor](https://github.com/sponsors/affaan-m) to get README sponsor placement + SPONSORS.md listing. No seats, SLA, custom development, or preferential technical placement is bundled unless separately agreed.*
+*[Become a Business sponsor](https://github.com/sponsors/affaan-m) to get README sponsor placement + SPONSORS.md listing. Current Business tier is $500/mo. No seats, SLA, custom development, or preferential technical placement is bundled unless separately agreed.*
+
+Run or self-host any open-source model. Itô is ECC's preferred compute sponsor, while ECC remains provider-agnostic and any GPU provider works. ECC only links to the [Itô dashboard](https://compute.itomarkets.com) for sign-in and GPU rental or management; it does not provision compute or serving. Managed inference through Itô is not live yet.
 
 ## Team Sponsors — $200/mo
 
@@ -51,7 +55,7 @@ Thank you to everyone funding ECC's open-source work. Your sponsorship is what l
 | Pro Sponsor | $50 | Above + listed in SPONSORS.md |
 | Team Sponsor | $200 | SPONSORS.md listing |
 | Business Sponsor | $500 | README sponsor placement + SPONSORS.md listing |
-| Strategic Sponsor | $2,500 | Premium sponsor placement + custom partnership discussion |
+| Strategic Sponsor | $2,500 | Premium sponsor placement + sponsor placement call |
 
 [**Become a Sponsor →**](https://github.com/sponsors/affaan-m)
 
@@ -74,4 +78,4 @@ If you sponsored before May 2026, you keep your original perks at your original 
 
 ---
 
-*Updated by Hermes. Last sync: 2026-06-09*
+*Updated by Hermes. Last sync: 2026-06-16*
