@@ -4,6 +4,7 @@
 
 SHELL := /bin/bash
 CLAUDE_DIR := $(HOME)/.claude
+KIMI_DIR := $(if $(KIMI_CODE_HOME),$(KIMI_CODE_HOME),$(HOME)/.kimi-code)
 SRC_DIR := $(shell pwd)
 
 # Source directories
@@ -18,6 +19,10 @@ COMMANDS_DEST := $(CLAUDE_DIR)/commands
 RULES_DEST := $(CLAUDE_DIR)/rules
 SKILLS_DEST := $(CLAUDE_DIR)/skills
 
+# Kimi Code destination + staging for adapted skills
+KIMI_SKILLS_DEST := $(KIMI_DIR)/skills
+KIMI_SKILLS_STAGING := $(SRC_DIR)/build/kimi/skills
+
 # File-based targets (only run if target doesn't exist)
 GITIGNORE := $(CLAUDE_DIR)/.gitignore
 GITDIR := $(CLAUDE_DIR)/.git
@@ -26,6 +31,7 @@ GITDIR := $(CLAUDE_DIR)/.git
 RSYNC_OPTS := -a --itemize-changes
 
 .PHONY: all install install-agents install-commands install-rules install-skills \
+        install-kimi install-kimi-skills \
         commit-changes clean help
 
 # Default target
@@ -91,6 +97,18 @@ install-skills: $(GITDIR)
 	UPD=$$(echo "$$OUTPUT" | grep '^>f' | grep -cv '^>f+++' || true); \
 	echo "skills: $$NEW new, $$UPD updated"
 
+# Full Kimi Code installation (skills adapted from the Claude originals)
+install-kimi: install-kimi-skills
+
+# Adapt skills for Kimi Code (scripts/adapt-skills-kimi.py) and install them
+install-kimi-skills:
+	@python3 $(SRC_DIR)/scripts/adapt-skills-kimi.py
+	@mkdir -p $(KIMI_SKILLS_DEST)
+	@OUTPUT=$$(rsync $(RSYNC_OPTS) --checksum $(KIMI_SKILLS_STAGING)/ $(KIMI_SKILLS_DEST)/); \
+	NEW=$$(echo "$$OUTPUT" | grep -c '^>f+++' || true); \
+	UPD=$$(echo "$$OUTPUT" | grep '^>f' | grep -cv '^>f+++' || true); \
+	echo "kimi skills: $$NEW new, $$UPD updated (-> $(KIMI_SKILLS_DEST))"
+
 # Commit changes with detailed message listing each file
 commit-changes:
 	@cd $(CLAUDE_DIR) && \
@@ -148,7 +166,11 @@ help:
 	@echo "  install-commands Install commands only"
 	@echo "  install-rules    Install rules only"
 	@echo "  install-skills   Install skills only"
+	@echo "  install-kimi     Install skills adapted for Kimi Code CLI"
+	@echo "  install-kimi-skills  Same as install-kimi (skills only)"
 	@echo "  help             Show this help message"
 	@echo ""
 	@echo "Only files newer than installed versions are copied."
-	@echo "Changes are auto-committed with detailed file listing."
+	@echo "Claude changes are auto-committed with detailed file listing."
+	@echo "Kimi skills are adapted by scripts/adapt-skills-kimi.py and installed"
+	@echo "to \$${KIMI_CODE_HOME:-~/.kimi-code}/skills (no git commit)."
