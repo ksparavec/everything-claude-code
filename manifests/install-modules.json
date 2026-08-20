@@ -113,6 +113,7 @@
         ".cursor",
         ".gemini",
         ".opencode",
+        ".pi",
         ".qwen",
         ".zed",
         "mcp-configs",
@@ -575,12 +576,9 @@
     {
       "id": "prediction-market-skills",
       "kind": "skills",
-      "description": "Public, non-advisory prediction-market and Ito basket research workflows with gated Ito API access.",
+      "description": "Public, non-advisory prediction-market workflows and the consolidated read-only Ito baskets data skill with gated Ito API access.",
       "paths": [
-        "skills/ito-basket-compare",
-        "skills/ito-data-atlas-agent",
-        "skills/ito-market-intelligence",
-        "skills/ito-trade-planner",
+        "skills/ito-baskets",
         "skills/prediction-market-oracle-research",
         "skills/prediction-market-risk-review"
       ],
@@ -638,6 +636,36 @@
       "stability": "beta"
     },
     {
+      "id": "nasiko-control-plane",
+      "kind": "skills",
+      "description": "Explicitly gated Nasiko control-plane installation, status, and agent-operations guidance with pinned artifact verification and opt-in telemetry boundaries.",
+      "paths": [
+        "skills/nasiko-control-plane"
+      ],
+      "targets": [
+        "claude",
+        "claude-project",
+        "cursor",
+        "antigravity",
+        "codex",
+        "gemini",
+        "opencode",
+        "codebuddy",
+        "joycode",
+        "qwen",
+        "zed",
+        "hermes",
+        "openclaw",
+        "kimi"
+      ],
+      "dependencies": [
+        "platform-configs"
+      ],
+      "defaultInstall": false,
+      "cost": "light",
+      "stability": "experimental"
+    },
+    {
       "id": "social-distribution",
       "kind": "skills",
       "description": "Social publishing and distribution skills.",
@@ -677,7 +705,8 @@
         "skills/ui-demo",
         "skills/video-editing",
         "skills/videodb",
-        "skills/taste"
+        "skills/taste",
+        "skills/tasteforge-video"
       ],
       "targets": [
         "claude",
